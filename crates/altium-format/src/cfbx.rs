@@ -50,7 +50,16 @@ impl Compound {
             .walk()
             .filter(|e| e.is_stream())
             .map(|e| StreamInfo {
-                path: e.path().to_string_lossy().trim_start_matches('/').to_owned(),
+                // `/`-joined on every OS: cfb hands back a std Path, whose separator is `\` on Windows.
+                path: e
+                    .path()
+                    .components()
+                    .filter_map(|c| match c {
+                        std::path::Component::Normal(s) => Some(s.to_string_lossy()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("/"),
                 size: e.len(),
             })
             .collect()
@@ -304,5 +313,16 @@ mod tests {
         assert_eq!(back.len(), 2);
         assert_eq!(back[1].kind, 1);
         assert_eq!(back[0].props().raw("A"), Some("1"));
+    }
+
+    #[test]
+    fn stream_paths_use_forward_slashes_on_every_os() {
+        let mut cf = cfb::CompoundFile::create(Cursor::new(Vec::new())).unwrap();
+        cf.create_storage("/Rules6").unwrap();
+        cf.create_stream("/Rules6/Data").unwrap().write_all(b"x").unwrap();
+        cf.flush().unwrap();
+        let c = Compound::from_bytes(Path::new("t.PcbDoc"), cf.into_inner().into_inner()).unwrap();
+        let paths: Vec<String> = c.streams().into_iter().map(|s| s.path).collect();
+        assert_eq!(paths, vec!["Rules6/Data".to_owned()]);
     }
 }
