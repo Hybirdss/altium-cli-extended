@@ -656,7 +656,7 @@ fn export(ctx: &Ctx, project: &Path, kinds: &[String], pcb: Option<&Path>, varia
     }
     let produced: std::collections::BTreeSet<&str> = items.iter().filter_map(|i| i.get("kind").and_then(Value::as_str)).collect();
     let missing: Vec<&str> = ks.iter().map(|k| k.name()).filter(|k| {
-        !produced.contains(k) && !(OutputKind::parse(k).is_ok_and(|o| o.is_pdf()) && items.iter().any(|i| i["format"] == "pdf"))
+        !(produced.contains(k) || (OutputKind::parse(k).is_ok_and(|o| o.is_pdf()) && items.iter().any(|i| i["format"] == "pdf")))
     }).collect();
     let mut out = Out::new(list_with(&items, json!({
         "out_dir": out_dir,

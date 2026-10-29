@@ -108,7 +108,7 @@ pub fn run(c: OutjobCmd, ctx: &Ctx) -> Result<Out> {
             let mut changed = vec![];
             for o in &outs {
                 let was = o.enabled_for.iter().any(|m| m == &med.name);
-                if was == !off {
+                if was != off {
                     continue;
                 }
                 j.set_enabled(o.index, med.index, !off);

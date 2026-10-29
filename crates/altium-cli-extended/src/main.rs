@@ -199,6 +199,15 @@ fn fail(command: &str, e: &Error, json_mode: bool, pretty: bool) -> ! {
 }
 
 fn main() {
+    // Windows gives the main thread 1 MiB of stack, which debug builds of the record decoders
+    // overflow; run the command on a thread with a stack that is large on every platform.
+    let worker = std::thread::Builder::new().stack_size(64 << 20).spawn(run).expect("spawn the main worker thread");
+    if worker.join().is_err() {
+        std::process::exit(101);
+    }
+}
+
+fn run() {
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
     let json_mode = want_json(&args);
     let pretty = args.iter().any(|a| a == "--pretty");

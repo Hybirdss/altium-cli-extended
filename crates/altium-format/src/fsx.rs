@@ -143,7 +143,8 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
-    #[cfg(unix)]
+    // APFS refuses non-UTF-8 file names (EILSEQ), so macOS cannot hold the file this test needs.
+    #[cfg(all(unix, not(target_os = "macos")))]
     #[test]
     fn backup_preserves_non_utf8_filename() {
         use std::os::unix::ffi::OsStringExt;

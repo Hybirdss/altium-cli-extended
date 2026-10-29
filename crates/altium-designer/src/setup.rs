@@ -345,7 +345,7 @@ pub fn apply(cfg: &Config, id: &str) -> Result<Vec<(String, i32)>> {
         return Err(Error::not_found(format!("no setup step {id:?}"))
             .hint(format!("steps: {}", all.iter().map(|s| s.id).collect::<Vec<_>>().join(", "))));
     };
-    if step.who != "auto" && !(step.id == "installer" && !step.commands.is_empty()) {
+    if step.who != "auto" && (step.id != "installer" || step.commands.is_empty()) {
         return Err(Error::new(ErrorCode::Unsafe, format!("step {id} needs you: {}", step.detail))
             .hint(if step.commands.is_empty() { "follow the detail text".to_owned() } else { format!("run: {}", step.commands.join(" && ")) }));
     }
