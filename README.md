@@ -45,8 +45,8 @@ ace.exe doctor --quick
 
 ```bash
 # macOS / Linux
-tar xzf altium-cli-extended-*.tar.gz              # unpacks into altium-cli-extended-<target>/
-sudo mv altium-cli-extended-*/ace /usr/local/bin/
+mkdir -p altium-cli-extended && tar xzf altium-cli-extended-*.tar.gz -C altium-cli-extended
+sudo mv altium-cli-extended/ace /usr/local/bin/
 ace doctor --quick
 ```
 
