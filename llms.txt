@@ -1,0 +1,16 @@
+# altium-cli-extended
+
+> `ace` is an agent-native command line for Altium Designer projects: it reads, queries, checks and edits .PrjPcb/.SchDoc/.SchLib/.PcbDoc/.PcbLib/.OutJob files natively on Windows, macOS and Linux, and drives a real Altium Designer (local Windows, Windows over SSH, or Wine) for compile, ERC, DRC and fabrication outputs. Every command prints one JSON envelope.
+>
+> Independent open-source project, unofficial, not affiliated with, endorsed by, or sponsored by Altium LLC. "Altium" and "Altium Designer" are registered trademarks of Altium LLC. Code: <https://github.com/Hybirdss/altium-cli-extended>
+
+## Docs
+
+- [README](README.md): install (prebuilt binaries and cargo), quickstart, backends, JSON contract, skill install
+- [Agent skill](skills/altium-cli-extended/SKILL.md): when to use the tool, rules, core workflows, native vs designer
+- [Command reference](skills/altium-cli-extended/COMMANDS.md): every command with arguments, return shape and example (generated)
+- [Architecture](ARCHITECTURE.md): crate layering and conventions for contributors
+
+## Optional
+
+- `ace commands --brief` and `ace describe <command>`: the same reference from the installed binary

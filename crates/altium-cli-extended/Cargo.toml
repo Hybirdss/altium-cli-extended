@@ -1,0 +1,30 @@
+[package]
+name = "altium-cli-extended"
+description = "ace: agent-native command line for Altium Designer (unofficial, not affiliated with Altium)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+altium-core.workspace = true
+altium-format.workspace = true
+altium-doc.workspace = true
+altium-analysis.workspace = true
+altium-designer.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+regex.workspace = true
+
+[[bin]]
+name = "ace"
+path = "src/main.rs"
+
+[dev-dependencies]
+cfb.workspace = true
+flate2.workspace = true

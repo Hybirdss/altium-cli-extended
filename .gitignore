@@ -1,0 +1,5 @@
+/target
+*.bak
+*.altium-cli-extended.tmp
+/.fixtures
+/.claude

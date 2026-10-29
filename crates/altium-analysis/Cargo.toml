@@ -1,0 +1,22 @@
+[package]
+name = "altium-analysis"
+description = "Cross-document analysis over Altium designs: BOM, netlist, consistency checks, diffs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+altium-core.workspace = true
+altium-doc.workspace = true
+indexmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+regex.workspace = true
+
+[dev-dependencies]
+altium-format.workspace = true

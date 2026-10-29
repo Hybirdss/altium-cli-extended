@@ -1,0 +1,22 @@
+[package]
+name = "altium-doc"
+description = "Typed models, parsers and safe editors for Altium documents (PrjPcb, OutJob, SchDoc, SchLib, PcbDoc, PcbLib)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+altium-core.workspace = true
+altium-format.workspace = true
+indexmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+flate2.workspace = true
+
+[dev-dependencies]
+cfb.workspace = true

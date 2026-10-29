@@ -1,0 +1,19 @@
+[package]
+name = "altium-designer"
+description = "Bridge to a real Altium Designer (local Windows, a Windows machine over SSH, or Wine): launch, run processes and scripts, collect results"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+altium-core.workspace = true
+altium-doc.workspace = true
+altium-format.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+chrono.workspace = true

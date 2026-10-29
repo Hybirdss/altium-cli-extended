@@ -1,0 +1,15 @@
+[package]
+name = "altium-core"
+description = "Error codes and length units shared by every altium crate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

@@ -1,0 +1,19 @@
+[package]
+name = "altium-format"
+description = "Altium file containers: OLE compound files, record framing, |K=V| properties, INI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+altium-core.workspace = true
+cfb.workspace = true
+encoding_rs.workspace = true
+indexmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
