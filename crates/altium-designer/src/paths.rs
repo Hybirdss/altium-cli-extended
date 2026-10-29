@@ -47,7 +47,8 @@ pub fn absolute(p: &Path) -> PathBuf {
     out
 }
 
-#[cfg(test)]
+// Wine prefixes exist only on Unix hosts; on Windows `/home/...` resolves against the current drive.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
