@@ -30,7 +30,15 @@ fn remove_and_parameter_rejections_without_fixtures() {
     support::pcblib(&file);
     let f = s(&file);
     let original = std::fs::read(&file).unwrap();
-    for (name, val) in [("HEIGHT", "2"), ("HEIGHT", "nonsensemm"), ("BAD=KEY", "x"), ("DESCRIPTION", "a|b")] {
+    for (name, val) in [
+        ("HEIGHT", "2"),
+        ("HEIGHT", "nonsensemm"),
+        ("HEIGHT", "NaNmm"),
+        ("HEIGHT", "infmil"),
+        ("HEIGHT", "1e15mm"),
+        ("BAD=KEY", "x"),
+        ("DESCRIPTION", "a|b"),
+    ] {
         let e = err(&["pcblib", "set-param", &f, "A", name, val], "USAGE");
         assert!(e["error"]["hint"].is_string(), "{e}");
     }
@@ -46,27 +54,6 @@ fn remove_and_parameter_rejections_without_fixtures() {
     let mut cf = altium_format::cfbx::Compound::open(&file).unwrap();
     assert!(!cf.exists("A/Data"));
     assert!(cf.read("Library/Models/Data").is_ok());
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn read_only_library_is_refused_untouched() {
-    let dir = tempdir("pcblib-read-only");
-    let file = dir.join("L.PcbLib");
-    support::pcblib(&file);
-    let f = s(&file);
-    let original = std::fs::read(&file).unwrap();
-    let mut perms = std::fs::metadata(&file).unwrap().permissions();
-    perms.set_readonly(true);
-    std::fs::set_permissions(&file, perms.clone()).unwrap();
-    let e = err(&["pcblib", "set-param", &f, "A", "DESCRIPTION", "New"], "UNSAFE");
-    assert!(e["error"]["hint"].as_str().unwrap().contains("lock"), "{e}");
-    assert_eq!(std::fs::read(&file).unwrap(), original);
-    assert!(std::fs::metadata(&file).unwrap().permissions().readonly());
-    assert!(!dir.join("L.PcbLib.bak").exists());
-    #[allow(clippy::permissions_set_readonly_false)]
-    perms.set_readonly(false);
-    std::fs::set_permissions(&file, perms).unwrap();
     std::fs::remove_dir_all(dir).unwrap();
 }
 

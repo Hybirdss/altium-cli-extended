@@ -24,6 +24,9 @@ fn pcb_rule_class_param_component_edits() {
     let r = ok(&["pcb", "rule", &f, "Clearance", "--units", "mil"]);
     assert_eq!(r["values"]["gap"], 8.0);
     err(&["pcb", "set-rule", &f, "Clearance", "gap", "8"], "USAGE");
+    for bad in ["NaNmm", "infmm", "1e15mm"] {
+        err(&["pcb", "set-rule", &f, "Clearance", "gap", bad], "USAGE");
+    }
     err(&["pcb", "set-rule", &f, "Clearance", "nosuchfield", "1"], "NOT_FOUND");
     ok(&["pcb", "set-rule", &f, "Clearance", "enabled", "false"]);
     assert_eq!(ok(&["pcb", "rule", &f, "Clearance"])["enabled"], false);
