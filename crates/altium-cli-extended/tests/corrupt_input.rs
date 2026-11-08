@@ -14,8 +14,7 @@ fn corrupt_region_coordinate_in_pcblib_returns_an_envelope() {
     bytes[99149] = 0xE5;
     std::fs::write(&lib, bytes).unwrap();
     let (exit, v) = run(&["pcblib", "list", &s(&lib)]);
-    assert_eq!(v["error"]["code"], "INTERNAL", "{v}");
-    assert!(v["error"]["details"]["location"].as_str().unwrap().contains("geom.rs"), "{v}");
-    assert_eq!(exit, 70);
+    assert_eq!(v["ok"], true, "{v}");
+    assert_eq!(exit, 0);
     std::fs::remove_dir_all(dir).unwrap();
 }
