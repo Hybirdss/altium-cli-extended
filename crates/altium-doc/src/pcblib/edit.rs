@@ -71,9 +71,17 @@ fn check_text(what: &str, v: &str) -> Result<()> {
     Ok(())
 }
 
-/// Storage names Altium derives from a footprint name: `/` becomes `_`, at most 31 characters.
+/// Storage name for a footprint: `/` becomes `_` as Altium does, and so do the other characters
+/// a compound file name cannot hold (`\ : !`) and control characters; at most 31 UTF-16 units.
 pub fn storage_name(name: &str) -> String {
-    name.replace('/', "_").chars().take(31).collect()
+    let mut units = 0;
+    name.chars()
+        .map(|c| if matches!(c, '/' | '\\' | ':' | '!') || c.is_control() { '_' } else { c })
+        .take_while(|c| {
+            units += c.len_utf16();
+            units <= 31
+        })
+        .collect()
 }
 
 fn check_footprint_name(name: &str) -> Result<()> {
@@ -702,6 +710,8 @@ mod tests {
         assert_eq!(storage_name("SOIC-8"), "SOIC-8");
         assert_eq!(storage_name("HC-49/U3H (low profile)"), "HC-49_U3H (low profile)");
         assert_eq!(storage_name(&"x".repeat(40)), "x".repeat(31));
+        assert_eq!(storage_name("A\\B:C!D\tE"), "A_B_C_D_E");
+        assert_eq!(storage_name(&"\u{1F600}".repeat(16)), "\u{1F600}".repeat(15));
     }
 
     #[test]
