@@ -225,12 +225,12 @@ impl Host for LocalHost {
         Ok(SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0).to_string())
     }
 
-    fn stage_in(&self, root: &Path, file: &Path) -> Result<Staged> {
+    fn stage_in(&self, set: &crate::ops::StageSet, file: &Path) -> Result<Staged> {
         let abs = std::path::absolute(file)?;
         if !abs.exists() {
             return Err(Error::new(ErrorCode::FileNotFound, format!("{} does not exist", abs.display())));
         }
-        let root = std::path::absolute(root)?;
+        let root = std::path::absolute(&set.root)?;
         Ok(Staged {
             win_root: root.display().to_string(),
             win_file: abs.display().to_string(),

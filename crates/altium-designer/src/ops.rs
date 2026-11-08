@@ -128,33 +128,56 @@ pub fn owning_project(doc: &Path) -> Option<PathBuf> {
     None
 }
 
-/// The directory to stage for `file`: for a project, the deepest folder containing the project
-/// and every document it references (`..\Utils\` sheets included); for a document of a
-/// project, that project's root (so Altium sees one copy of the project); otherwise the file's
-/// folder.
-pub fn stage_root(file: &Path) -> PathBuf {
+/// What staging makes visible to Altium for one file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StageSet {
+    /// The folder Altium sees the files under.
+    pub root: PathBuf,
+    /// Absolute paths under `root`; only these are sent to a remote host.
+    pub files: Vec<PathBuf>,
+}
+
+/// How many folders above the project folder a referenced document may sit (`..\Utils\`).
+const MAX_CLIMB: usize = 2;
+
+/// For a project, the project file and every document it references (`..\Utils\` sheets
+/// included) under the deepest folder holding them all; for a document of a project, that
+/// project's set (so Altium sees one copy of the project); otherwise the file in its folder.
+pub fn stage_set(file: &Path) -> Result<StageSet> {
     let abs = crate::paths::absolute(file);
     let parent = abs.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("/"));
     if DocKind::of(&abs) != DocKind::Project {
-        return match owning_project(&abs) {
-            Some(prj) => {
-                let r = stage_root(&prj);
-                if abs.starts_with(&r) { r } else { parent }
-            }
-            None => parent,
-        };
-    }
-    let Ok(p) = Project::load(&abs) else { return parent };
-    let mut root = parent;
-    for d in p.documents.iter().filter(|d| d.exists) {
-        let dp = crate::paths::absolute(&d.path);
-        while !dp.starts_with(&root) {
-            if !root.pop() {
-                break;
+        if let Some(prj) = owning_project(&abs) {
+            let set = stage_set(&prj)?;
+            if abs.starts_with(&set.root) {
+                return Ok(set);
             }
         }
+        return Ok(StageSet { root: parent, files: vec![abs] });
     }
-    root
+    let Ok(p) = Project::load(&abs) else { return Ok(StageSet { root: parent, files: vec![abs] }) };
+    let docs: Vec<PathBuf> = p.documents.iter().filter(|d| d.exists).map(|d| crate::paths::absolute(&d.path)).collect();
+    let root = project_root(&parent, &docs, &crate::config::home())?;
+    Ok(StageSet { root, files: std::iter::once(abs).chain(docs).collect() })
+}
+
+/// The deepest folder holding `project_dir` and every document. Refused when that is more than
+/// [`MAX_CLIMB`] folders up, or when climbing reaches `home` or above it: staging would then
+/// cover unrelated files.
+fn project_root(project_dir: &Path, docs: &[PathBuf], home: &Path) -> Result<PathBuf> {
+    let mut root = project_dir.to_path_buf();
+    let mut climbed = 0;
+    for d in docs {
+        while !d.starts_with(&root) && root.pop() {
+            climbed += 1;
+        }
+    }
+    if climbed > MAX_CLIMB || (climbed > 0 && home.starts_with(&root)) {
+        let far = docs.iter().find(|d| !d.starts_with(project_dir)).unwrap_or(&root);
+        return Err(Error::new(ErrorCode::Unsafe, format!("the project references {}, too far outside its folder {} to stage", far.display(), project_dir.display()))
+            .hint(format!("keep project documents at most {MAX_CLIMB} folders above the project folder and below your home folder; move shared sheets next to the project and update their paths")));
+    }
+    Ok(root)
 }
 
 fn clock_file(root: &Path) -> PathBuf {
@@ -258,8 +281,11 @@ impl Designer {
     /// The clock is only taken the first time: it advances when changes are pulled, so edits
     /// Altium made are never skipped by a later staging.
     pub fn stage(&self, file: &Path) -> Result<Staged> {
-        let root = stage_root(file);
-        let cf = clock_file(&crate::paths::absolute(&root));
+        self.stage_files(&stage_set(file)?, file)
+    }
+
+    fn stage_files(&self, set: &StageSet, file: &Path) -> Result<Staged> {
+        let cf = clock_file(&crate::paths::absolute(&set.root));
         if !cf.exists() {
             let clock = self.host.clock()?;
             if let Some(d) = cf.parent() {
@@ -267,7 +293,7 @@ impl Designer {
             }
             std::fs::write(&cf, clock)?;
         }
-        self.host.stage_in(&root, file)
+        self.host.stage_in(set, file)
     }
 
     /// Bring back what Altium wrote under the staged root since the last pull.
@@ -283,7 +309,7 @@ impl Designer {
 
     /// Copy back what Altium changed in `file`'s project since it was last staged.
     pub fn pull(&self, file: &Path) -> Result<Vec<PathBuf>> {
-        let root = stage_root(file);
+        let root = stage_set(file)?.root;
         std::fs::read_to_string(clock_file(&crate::paths::absolute(&root))).map_err(|_| {
             Error::new(ErrorCode::NotFound, "this project was never sent to Altium").hint("run a designer command on it (or `ace designer push`) first")
         })?;
@@ -329,8 +355,10 @@ impl Designer {
             convert_coords(&mut r.data);
             return Ok(Called { resp: r, staged: None, pulled: vec![] });
         };
-        let root = stage_root(first);
-        let st = self.stage(first)?;
+        let mut set = stage_set(first)?;
+        let root = set.root.clone();
+        set.files.extend(files[1..].iter().map(|(_, f)| crate::paths::absolute(f)).filter(|f| f.starts_with(&root)));
+        let st = self.stage_files(&set, first)?;
         for (k, f) in files {
             let abs = crate::paths::absolute(f);
             let rel = abs.strip_prefix(&st.local_root).map_err(|_| {
@@ -420,7 +448,7 @@ impl Designer {
     /// Run an OutJob medium; returns the response and the generated files (copied back from an
     /// SSH host, or found by modification time locally).
     pub fn outjob(&self, project: &Path, outjob: &Path, medium: Option<&str>, action: &str, timeout: Option<u64>) -> Result<Called> {
-        let root = stage_root(project);
+        let root = stage_set(project)?.root;
         if !crate::paths::absolute(outjob).starts_with(&root) {
             return Err(Error::usage("the OutJob must be inside the project folder").hint("copy it next to the .PrjPcb"));
         }
@@ -558,6 +586,55 @@ impl Designer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn project_root_stays_near_the_project() {
+        let home = Path::new("/home/u");
+        let board = Path::new("/home/u/designs/board");
+        let docs = |d: &[&str]| d.iter().map(PathBuf::from).collect::<Vec<_>>();
+        assert_eq!(project_root(board, &docs(&["/home/u/designs/board/A.SchDoc"]), home).unwrap(), board);
+        assert_eq!(project_root(board, &docs(&["/home/u/designs/Utils/B.SchDoc"]), home).unwrap(), Path::new("/home/u/designs"));
+        assert_eq!(project_root(home, &docs(&["/home/u/A.SchDoc"]), home).unwrap(), home);
+        assert_eq!(project_root(Path::new("/srv/p/a/board"), &docs(&["/srv/p/shared/Logo.SchDoc"]), home).unwrap(), Path::new("/srv/p"));
+        for (dir, doc) in [
+            ("/home/u/designs/board", "/home/u/shared/Logo.SchDoc"),
+            ("/home/u/board", "/home/u/.ssh/id_ed25519"),
+            ("/srv/p/a/b/board", "/srv/p/shared/Logo.SchDoc"),
+            ("/srv/p/board", "/etc/passwd"),
+        ] {
+            let e = project_root(Path::new(dir), &docs(&[doc]), home).unwrap_err();
+            assert_eq!(e.code, ErrorCode::Unsafe, "{doc}");
+            assert!(e.message.contains(doc), "{}", e.message);
+        }
+    }
+
+    #[test]
+    fn stage_set_lists_only_the_project_and_its_documents() {
+        let tmp = std::env::temp_dir().join(format!("ace-stage-set-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let board = tmp.join("a/b/board");
+        std::fs::create_dir_all(&board).unwrap();
+        std::fs::create_dir_all(tmp.join("a/b/Utils")).unwrap();
+        std::fs::create_dir_all(tmp.join("shared")).unwrap();
+        for f in ["board/A.SchDoc", "board/secret.txt", "Utils/B.SchDoc", "notes.txt"] {
+            std::fs::write(tmp.join("a/b").join(f), b"x").unwrap();
+        }
+        std::fs::write(tmp.join("shared/Logo.SchDoc"), b"x").unwrap();
+        let prj = board.join("Board.PrjPcb");
+        std::fs::write(&prj, "[Design]\r\nVersion=1.0\r\n\r\n[Document1]\r\nDocumentPath=A.SchDoc\r\n\r\n[Document2]\r\nDocumentPath=..\\Utils\\B.SchDoc\r\n").unwrap();
+        let set = stage_set(&prj).unwrap();
+        assert_eq!(set.root, tmp.join("a/b"));
+        assert_eq!(set.files, vec![prj.clone(), board.join("A.SchDoc"), tmp.join("a/b/Utils/B.SchDoc")]);
+        assert_eq!(stage_set(&board.join("A.SchDoc")).unwrap(), set);
+        assert_eq!(stage_set(&board.join("secret.txt")).unwrap(), StageSet { root: board.clone(), files: vec![board.join("secret.txt")] });
+
+        let far = tmp.join("a/b/far/Far.PrjPcb");
+        std::fs::create_dir_all(far.parent().unwrap()).unwrap();
+        std::fs::write(&far, "[Document1]\r\nDocumentPath=..\\..\\..\\shared\\Logo.SchDoc\r\n").unwrap();
+        assert_eq!(stage_set(&far).unwrap_err().code, ErrorCode::Unsafe);
+        std::fs::remove_dir_all(tmp).unwrap();
+    }
 
     #[test]
     fn backups_only_cover_design_writes() {
