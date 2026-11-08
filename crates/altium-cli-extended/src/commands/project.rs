@@ -213,7 +213,7 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
                 Some((n, _)) => p.ini.section_mut(&format!("Parameter{n}")).unwrap().set("Value", &value),
                 None => {
                     let n = p.ini.numbered("Parameter").last().map(|(n, _)| n + 1).unwrap_or(1);
-                    let mut s = altium_format::ini::Section { name: format!("Parameter{n}"), entries: vec![] };
+                    let mut s = altium_format::ini::Section::new(format!("Parameter{n}"));
                     s.set("Name", &name);
                     s.set("Value", &value);
                     insert_after_numbered(&mut p.ini, "Parameter", s);
@@ -240,7 +240,7 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
             let path = ctx.input(&project)?;
             let mut p = Project::load(&path)?;
             if p.ini.section(&section).is_none() {
-                p.ini.sections.push(altium_format::ini::Section { name: section.clone(), entries: vec![] });
+                p.ini.sections.push(altium_format::ini::Section::new(section.clone()));
             }
             let s = p.ini.section_mut(&section).unwrap();
             let before = s.get(&key).map(str::to_owned);
@@ -261,7 +261,7 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
                     .hint("create the document first (in Altium, or copy a template)"));
             }
             let n = p.ini.numbered("Document").last().map(|(n, _)| n + 1).unwrap_or(1);
-            let mut s = altium_format::ini::Section { name: format!("Document{n}"), entries: vec![] };
+            let mut s = altium_format::ini::Section::new(format!("Document{n}"));
             s.set("DocumentPath", &rel);
             s.set("AnnotationEnabled", "1");
             s.set("DoLibraryUpdate", "1");
@@ -373,14 +373,10 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
     }
 }
 
-/// Write the edited project: the new text must re-parse to exactly the edited sections
-/// (and still load as a project) before it replaces the file.
+/// Write the edited project: only the edited entries may change bytes, and the new text must
+/// read back as edited (and still load as a project) before it replaces the file.
 fn save(ctx: &Ctx, path: &Path, ini: &altium_format::ini::Ini) -> Result<Option<PathBuf>> {
-    let bytes = ini.to_bytes();
-    if &altium_format::ini::Ini::parse(&bytes) != ini {
-        return Err(Error::new(ErrorCode::Unsafe, "the edited project does not read back identically; nothing written")
-            .hint("a value probably contains a line break or a character the code page cannot store"));
-    }
+    let bytes = ini.write_over(&std::fs::read(path)?)?;
     Project::from_bytes(path, &bytes).map_err(|e| Error::new(ErrorCode::Unsafe, format!("the edited project does not load: {}", e.message)))?;
     let backup = ctx.write_file(path, &bytes)?;
     if !ctx.dry_run && std::fs::read(path)? != bytes {

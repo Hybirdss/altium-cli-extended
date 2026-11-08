@@ -141,7 +141,8 @@ fn codepage_hint() {
     assert_eq!(v["warnings"], serde_json::json!([]));
 }
 
-/// Project/OutJob text edits rely on untouched lines surviving a parse + write unchanged.
+/// Project/OutJob text edits rely on untouched lines surviving a parse + write unchanged,
+/// even in a code page that cannot decode them.
 #[test]
 fn ini_files_roundtrip() {
     let Some(root) = samples() else { return };
@@ -159,7 +160,10 @@ fn ini_files_roundtrip() {
             let ext = p.extension().map(|x| x.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
             if ext == "prjpcb" || ext == "outjob" {
                 let b = std::fs::read(&p).unwrap();
-                assert!(altium_format::ini::Ini::parse(&b).to_bytes() == b, "{} does not round-trip", p.display());
+                for cp in ["utf-8", "gbk", "shift_jis", "windows-1252"] {
+                    altium_format::props::set_codepage(cp);
+                    assert!(altium_format::ini::Ini::parse(&b).to_bytes().unwrap() == b, "{} does not round-trip in {cp}", p.display());
+                }
                 n += 1;
             }
         }

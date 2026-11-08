@@ -78,10 +78,10 @@ impl OutJob {
             let mut settings = IndexMap::new();
             for section in ["GeneratedFilesSettings", "PublishSettings"] {
                 let Some(s) = self.ini.section(section) else { continue };
-                for (k, v) in &s.entries {
-                    if let Some(base) = k.strip_suffix(&i.to_string())
+                for e in &s.entries {
+                    if let Some(base) = e.key.strip_suffix(&i.to_string())
                         && base.chars().last().is_some_and(|c| !c.is_ascii_digit()) {
-                            settings.entry(base.to_owned()).or_insert_with(|| v.clone());
+                            settings.entry(base.to_owned()).or_insert_with(|| e.value.clone());
                         }
                 }
             }
@@ -104,7 +104,7 @@ impl OutJob {
             let config_items = g
                 .entries
                 .iter()
-                .filter(|(k, _)| k.starts_with(&format!("Configuration{i}_Item")))
+                .filter(|e| e.key.starts_with(&format!("Configuration{i}_Item")))
                 .count();
             out.push(Output {
                 index: i,

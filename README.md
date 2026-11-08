@@ -42,7 +42,7 @@ Every command outputs a single JSON envelope, every failure returns a stable err
 * **Wine on Linux (optional):** Drives Altium Designer under Wine.
 
 > **Byte-safe native writes & Designer note:**
-> * Native writes (`effect: write`) support `--dry-run`, preserve the first `<file>.bak` (unless `--no-backup` is passed), and re-parse the modified bytes before replacing the file. Binary `.SchDoc`/`.PcbDoc`/`.PcbLib` edits keep untouched records and streams intact. Project and OutJob INI writes preserve entry order, line endings, and BOM, while normalizing section spacing and omitting comments (keep `.bak` if your INI files contain hand-written comments).
+> * Native writes (`effect: write`) support `--dry-run`, preserve the first `<file>.bak` (unless `--no-backup` is passed), and re-parse the modified bytes before replacing the file. Binary `.SchDoc`/`.PcbDoc`/`.PcbLib` edits keep untouched records and streams intact. Project and OutJob INI writes rewrite only the entries they edit: every other line, comments and blank lines included, keeps its exact bytes, line ending, and BOM, and a value the code page cannot store is refused with `UNSAFE`.
 > * Known Designer limitation: Designer jobs leave `.PrjPcb` and bridge script projects (`AltiumCliBridge.PrjScr`, `Job.PrjScr`) open in the Projects panel, and a board after DRC appears modified. Close them manually from the Projects panel when needed and select **"Don't Save"** for files you did not edit.
 
 ---

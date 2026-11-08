@@ -42,7 +42,7 @@ Cada comando imprime un único sobre JSON, cada fallo devuelve un código de err
 * **Wine en Linux (opcional):** Controla Altium Designer bajo Wine.
 
 > **Escrituras nativas seguras y nota sobre Designer:**
-> * Las escrituras nativas (`effect: write`) admiten `--dry-run`, conservan la primera copia de seguridad `<file>.bak` (salvo que se indique `--no-backup`) y vuelven a analizar el resultado antes de reemplazar el archivo. Las ediciones en documentos binarios preservan intactos los registros y flujos no modificados.
+> * Las escrituras nativas (`effect: write`) admiten `--dry-run`, conservan la primera copia de seguridad `<file>.bak` (salvo que se indique `--no-backup`) y vuelven a analizar el resultado antes de reemplazar el archivo. Las ediciones en documentos binarios preservan intactos los registros y flujos no modificados. Las escrituras INI de proyectos y OutJob solo reescriben las entradas editadas: las demás líneas, incluidos comentarios y líneas en blanco, conservan sus bytes exactos, sus finales de línea y el BOM, y un valor que la página de códigos no puede almacenar se rechaza con `UNSAFE`.
 > * Limitación conocida de Designer: los trabajos de Designer dejan abiertos en el panel Projects el `.PrjPcb` del trabajo y los proyectos de script puente (`AltiumCliBridge.PrjScr`, `Job.PrjScr`), y una placa donde se ejecutó DRC aparece como modificada. Ciérralos manualmente desde el panel Projects cuando crezca la lista y elige **"Don't Save"** para todo lo que no hayas editado.
 
 ---
