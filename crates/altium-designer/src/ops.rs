@@ -103,7 +103,7 @@ pub fn host_choice(cfg: &Config) -> &'static str {
 /// The project a document belongs to: a `.PrjPcb` in its folder (or up to two levels above)
 /// that lists it.
 pub fn owning_project(doc: &Path) -> Option<PathBuf> {
-    let abs = crate::paths::absolute(doc);
+    let abs = crate::paths::resolve(doc);
     let mut dir = abs.parent()?.to_path_buf();
     for _ in 0..3 {
         let mut found: Vec<PathBuf> = std::fs::read_dir(&dir)
@@ -116,7 +116,7 @@ pub fn owning_project(doc: &Path) -> Option<PathBuf> {
         found.sort();
         for prj in found {
             if let Ok(p) = Project::load(&prj)
-                && p.documents.iter().any(|d| crate::paths::absolute(&d.path) == abs)
+                && p.documents.iter().any(|d| crate::paths::resolve(&d.path) == abs)
             {
                 return Some(prj);
             }
