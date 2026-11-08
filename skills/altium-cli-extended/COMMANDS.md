@@ -1562,7 +1562,7 @@ Drive a real Altium Designer (local Windows, Windows over SSH, or Wine): compile
 ### `ace designer setup`
 _designer/control_ — Installation guide: every step with done/todo, who must do it, and the commands
 
-- `--apply` — Run one automatable step (e.g. `bottles`, `bottle-env`, `fixes`, `bridge`)
+- `--apply` — Run one automatable step (e.g. `bottles`, `bottle-env`, `fixes`)
 
 Example: `ace designer setup`
 

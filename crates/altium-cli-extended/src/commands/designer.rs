@@ -22,7 +22,7 @@ use crate::output::{Out, list, list_with};
 pub enum DesignerCmd {
     /// Installation guide: every step with done/todo, who must do it, and the commands.
     Setup {
-        /// Run one automatable step (e.g. `bottles`, `bottle-env`, `fixes`, `bridge`).
+        /// Run one automatable step (e.g. `bottles`, `bottle-env`, `fixes`).
         #[arg(long)]
         apply: Option<String>,
     },
