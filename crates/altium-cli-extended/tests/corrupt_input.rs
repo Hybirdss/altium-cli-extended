@@ -18,3 +18,14 @@ fn corrupt_region_coordinate_in_pcblib_returns_an_envelope() {
     assert_eq!(exit, 0);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn pcbdoc_renamed_to_schlib_is_the_wrong_file_type() {
+    let Some(root) = samples() else { return };
+    let dir = tempdir("wrong-schlib");
+    let wrong = dir.join("wrong.SchLib");
+    std::fs::copy(root.join("AirPi_PCB/AirPi_Power/AirPi_Power.PcbDoc"), &wrong).unwrap();
+    let e = err(&["schlib", "list", &s(&wrong)], "WRONG_FILE_TYPE");
+    assert!(e["error"]["hint"].is_string(), "{e}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
