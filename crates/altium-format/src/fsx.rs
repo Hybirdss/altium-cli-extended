@@ -65,7 +65,8 @@ pub fn replace(path: &Path, bytes: &[u8], opts: WriteOpts) -> Result<Option<Path
         path
     };
     let original = match std::fs::metadata(path) {
-        Ok(m) => Some(m.permissions()),
+        Ok(m) if m.is_file() => Some(m.permissions()),
+        Ok(_) => None,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(Error::from(e)),
     };
