@@ -47,6 +47,32 @@ pub fn absolute(p: &Path) -> PathBuf {
     out
 }
 
+/// The path the file system names for `p`, with symlinks resolved, or [`absolute`] when `p`
+/// does not exist yet. altium-doc resolves a project and its documents the same way, so paths
+/// from both sides compare equal on every OS (`/var` vs `/private/var` on macOS).
+pub fn resolve(p: &Path) -> PathBuf {
+    std::fs::canonicalize(p).map(plain).unwrap_or_else(|_| absolute(p))
+}
+
+/// Drop the `\\?\` prefix Windows canonicalization adds, so paths stay in the `C:\...` form Altium
+/// and the rest of this crate use.
+#[cfg(windows)]
+fn plain(p: PathBuf) -> PathBuf {
+    let s = p.to_string_lossy().into_owned();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match s.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => p,
+    }
+}
+
+#[cfg(not(windows))]
+fn plain(p: PathBuf) -> PathBuf {
+    p
+}
+
 // Wine prefixes exist only on Unix hosts; on Windows `/home/...` resolves against the current drive.
 #[cfg(all(test, unix))]
 mod tests {

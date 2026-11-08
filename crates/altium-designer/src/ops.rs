@@ -144,7 +144,7 @@ const MAX_CLIMB: usize = 2;
 /// included) under the deepest folder holding them all; for a document of a project, that
 /// project's set (so Altium sees one copy of the project); otherwise the file in its folder.
 pub fn stage_set(file: &Path) -> Result<StageSet> {
-    let abs = crate::paths::absolute(file);
+    let abs = crate::paths::resolve(file);
     let parent = abs.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("/"));
     if DocKind::of(&abs) != DocKind::Project {
         if let Some(prj) = owning_project(&abs) {
@@ -156,7 +156,7 @@ pub fn stage_set(file: &Path) -> Result<StageSet> {
         return Ok(StageSet { root: parent, files: vec![abs] });
     }
     let Ok(p) = Project::load(&abs) else { return Ok(StageSet { root: parent, files: vec![abs] }) };
-    let docs: Vec<PathBuf> = p.documents.iter().filter(|d| d.exists).map(|d| crate::paths::absolute(&d.path)).collect();
+    let docs: Vec<PathBuf> = p.documents.iter().filter(|d| d.exists).map(|d| crate::paths::resolve(&d.path)).collect();
     let root = project_root(&parent, &docs, &crate::config::home())?;
     Ok(StageSet { root, files: std::iter::once(abs).chain(docs).collect() })
 }
@@ -357,7 +357,7 @@ impl Designer {
         };
         let mut set = stage_set(first)?;
         let root = set.root.clone();
-        set.files.extend(files[1..].iter().map(|(_, f)| crate::paths::absolute(f)).filter(|f| f.starts_with(&root)));
+        set.files.extend(files[1..].iter().map(|(_, f)| crate::paths::resolve(f)).filter(|f| f.starts_with(&root)));
         let st = self.stage_files(&set, first)?;
         for (k, f) in files {
             let abs = crate::paths::absolute(f);
@@ -613,8 +613,9 @@ mod tests {
     fn stage_set_lists_only_the_project_and_its_documents() {
         let tmp = std::env::temp_dir().join(format!("ace-stage-set-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("a/b/board")).unwrap();
+        let tmp = crate::paths::resolve(&tmp);
         let board = tmp.join("a/b/board");
-        std::fs::create_dir_all(&board).unwrap();
         std::fs::create_dir_all(tmp.join("a/b/Utils")).unwrap();
         std::fs::create_dir_all(tmp.join("shared")).unwrap();
         for f in ["board/A.SchDoc", "board/secret.txt", "Utils/B.SchDoc", "notes.txt"] {

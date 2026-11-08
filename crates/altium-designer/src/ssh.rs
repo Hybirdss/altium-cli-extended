@@ -687,7 +687,7 @@ impl Host for SshHost {
 
     fn stage_in(&self, set: &crate::ops::StageSet, file: &Path) -> Result<Staged> {
         let root = crate::paths::absolute(&set.root);
-        let file = crate::paths::absolute(file);
+        let file = crate::paths::resolve(file);
         let rel_file = file.strip_prefix(&root).map_err(|_| Error::internal(format!("{} is not under {}", file.display(), root.display())))?;
         let key = fnv(&root.to_string_lossy());
         let base = root.file_name().map(|n| n.to_string_lossy().replace(' ', "_")).unwrap_or_else(|| "root".into());
@@ -727,7 +727,7 @@ impl Host for SshHost {
 
     fn staged_location(&self, root: &Path, file: &Path) -> Result<Staged> {
         let root = crate::paths::absolute(root);
-        let file = crate::paths::absolute(file);
+        let file = crate::paths::resolve(file);
         let rel = file.strip_prefix(&root).map_err(|_| Error::usage("file is outside the staged root"))?;
         let key = fnv(&root.to_string_lossy());
         let base = root.file_name().map(|n| n.to_string_lossy().replace(' ', "_")).unwrap_or_else(|| "root".into());
