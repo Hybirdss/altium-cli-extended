@@ -154,6 +154,9 @@ fn line_endings_bom_comments_and_spacing_survive_edits() {
     let p = write(&dir, "append.PrjPcb", &crlf_file[..crlf_file.len() - 2]);
     ok(&["project", "set-option", &p, "Document1", "AnnotationEnabled", "1"]);
     assert_eq!(read(&p), shown(&[&crlf_file[..], b"AnnotationEnabled=1\r\n"].concat()));
+    let p = write(&dir, "append-section.PrjPcb", &crlf_file[..crlf_file.len() - 2]);
+    ok(&["project", "set-option", &p, "Extra", "Key", "1"]);
+    assert_eq!(read(&p), shown(&[&crlf_file[..], b"\r\n[Extra]\r\nKey=1\r\n"].concat()));
 }
 
 /// The sample projects saved on Chinese and Russian Windows, edited with the wrong code page.

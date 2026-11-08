@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use altium_core::error::{Error, ErrorCode, Result};
 use altium_format::DocKind;
-use altium_format::ini::{Ini, pipe_props};
+use altium_format::ini::{Entry, Ini, Section, pipe_props};
 
 pub struct Project {
     pub path: PathBuf,
@@ -266,12 +266,14 @@ impl VariationKind {
     }
 }
 
-/// Variation lines of a `[ProjectVariantN]` section, in Altium's order.
+/// Variation lines of a `[ProjectVariantN]` section, in Altium's order. The entries move with
+/// the bytes they were read from, so a renumbered line keeps its value's bytes; `put` numbers
+/// the keys.
 #[derive(Debug, Clone, Default)]
 struct VariantLines {
-    variations: Vec<String>,
-    /// `(designator, ParameterName=..|VariantValue=..)`.
-    params: Vec<(String, String)>,
+    variations: Vec<Entry>,
+    /// `(ParamDesignatorN, ParamVariationN)`; the latter's value is `ParameterName=..|VariantValue=..`.
+    params: Vec<(Entry, Entry)>,
 }
 
 fn is_numbered(key: &str, prefix: &str) -> bool {
@@ -279,20 +281,21 @@ fn is_numbered(key: &str, prefix: &str) -> bool {
 }
 
 impl VariantLines {
-    fn take(s: &mut altium_format::ini::Section) -> VariantLines {
+    fn take(s: &mut Section) -> VariantLines {
         let count = |k: &str| s.int(k).unwrap_or(0).max(0) as usize;
         let mut v = VariantLines::default();
         for i in 1..=count("VariationCount") {
-            if let Some(x) = s.get(&format!("Variation{i}")) {
-                v.variations.push(x.to_owned());
+            if let Some(x) = s.entry(&format!("Variation{i}")) {
+                v.variations.push(x.clone());
             }
         }
         for i in 1..=count("ParamVariationCount") {
-            if let Some(x) = s.get(&format!("ParamVariation{i}")) {
-                v.params.push((s.str(&format!("ParamDesignator{i}")), x.to_owned()));
+            if let Some(x) = s.entry(&format!("ParamVariation{i}")) {
+                let designator = s.entry(&format!("ParamDesignator{i}")).cloned().unwrap_or_else(|| Entry::new("", ""));
+                v.params.push((designator, x.clone()));
             }
         }
-        s.entries.retain(|(k, _)| {
+        s.entries.retain(|Entry { key: k, .. }| {
             !(k.eq_ignore_ascii_case("VariationCount")
                 || k.eq_ignore_ascii_case("ParamVariationCount")
                 || is_numbered(k, "Variation")
@@ -303,39 +306,42 @@ impl VariantLines {
     }
 
     /// Put the lines back after the variant's own fields and parameters.
-    fn put(self, s: &mut altium_format::ini::Section) {
+    fn put(self, s: &mut Section) {
         let parameter_count = self.params.len();
         let mut components: Vec<_> = self.variations.into_iter().map(|line| (line, Vec::new())).collect();
         let mut orphans = Vec::new();
         for (designator, line) in self.params {
-            if let Some((_, params)) = components.iter_mut().find(|(line, _)| designator_of(line).eq_ignore_ascii_case(&designator)) {
+            if let Some((_, params)) = components.iter_mut().find(|(line, _)| designator_of(&line.value).eq_ignore_ascii_case(&designator.value)) {
                 params.push((designator, line));
             } else {
                 orphans.push((designator, line));
             }
         }
-        let mut block = vec![("VariationCount".to_owned(), components.len().to_string())];
+        let mut block = vec![Entry::new("VariationCount", components.len().to_string())];
         let mut parameter_index = 0;
-        let mut append_params = |block: &mut Vec<(String, String)>, params: Vec<(String, String)>| {
-            for (designator, line) in params {
+        let mut append_params = |block: &mut Vec<Entry>, params: Vec<(Entry, Entry)>| {
+            for (mut designator, mut line) in params {
                 parameter_index += 1;
-                block.push((format!("ParamDesignator{parameter_index}"), designator));
-                block.push((format!("ParamVariation{parameter_index}"), line));
+                designator.key = format!("ParamDesignator{parameter_index}");
+                line.key = format!("ParamVariation{parameter_index}");
+                block.push(designator);
+                block.push(line);
             }
         };
         // Preserve legacy orphan rows before any component, where they cannot change
         // another part. Altium attaches parameter rows to the preceding VariationN.
         append_params(&mut block, orphans);
-        for (i, (line, params)) in components.into_iter().enumerate() {
-            block.push((format!("Variation{}", i + 1), line));
+        for (i, (mut line, params)) in components.into_iter().enumerate() {
+            line.key = format!("Variation{}", i + 1);
+            block.push(line);
             append_params(&mut block, params);
         }
         // Altium ignores the overrides if their count appears before the rows.
-        block.push(("ParamVariationCount".to_owned(), parameter_count.to_string()));
+        block.push(Entry::new("ParamVariationCount", parameter_count.to_string()));
         let at = s
             .entries
             .iter()
-            .rposition(|(k, _)| {
+            .rposition(|Entry { key: k, .. }| {
                 ["UniqueID", "Description", "AllowFabrication", "ParameterCount"].iter().any(|x| k.eq_ignore_ascii_case(x)) || is_numbered(k, "Parameter")
             })
             .map(|i| i + 1)
@@ -363,7 +369,7 @@ impl Project {
             return Err(Error::new(ErrorCode::Unsafe, format!("a variant named {name:?} already exists")));
         }
         let n = self.ini.numbered("ProjectVariant").last().map(|(n, _)| n + 1).unwrap_or(1);
-        let mut s = altium_format::ini::Section { name: format!("ProjectVariant{n}"), entries: vec![] };
+        let mut s = Section::new(format!("ProjectVariant{n}"));
         s.set("UniqueID", unique_id);
         s.set("Description", name);
         s.set("AllowFabrication", if allow_fabrication { "1" } else { "0" });
@@ -412,10 +418,10 @@ impl Project {
             return Err(Error::usage("the alternate part cannot contain |"));
         }
         let line = format!("Designator={designator}|UniqueId={unique_id}|Kind={}|AlternatePart={alt}", kind.code());
-        let before = match lines.variations.iter().position(|x| designator_of(x).eq_ignore_ascii_case(designator)) {
-            Some(i) => Some(std::mem::replace(&mut lines.variations[i], line.clone())),
+        let before = match lines.variations.iter().position(|x| designator_of(&x.value).eq_ignore_ascii_case(designator)) {
+            Some(i) => Some(std::mem::replace(&mut lines.variations[i].value, line.clone())),
             None => {
-                lines.variations.push(line.clone());
+                lines.variations.push(Entry::new("", line.clone()));
                 None
             }
         };
@@ -436,16 +442,16 @@ impl Project {
         let s = self.ini.section_mut(&sec).ok_or_else(|| Error::internal("variant section vanished"))?;
         let mut lines = VariantLines::take(s);
         if let Some(unique_id) = unique_id {
-            lines.variations.push(format!("Designator={designator}|UniqueId={unique_id}|Kind=0|AlternatePart="));
+            lines.variations.push(Entry::new("", format!("Designator={designator}|UniqueId={unique_id}|Kind=0|AlternatePart=")));
         }
         let line = format!("ParameterName={parameter}|VariantValue={value}");
         let hit = lines.params.iter().position(|(d, x)| {
-            d.eq_ignore_ascii_case(designator) && pipe_props(x).get("ParameterName").is_some_and(|p| p.eq_ignore_ascii_case(parameter))
+            d.value.eq_ignore_ascii_case(designator) && pipe_props(&x.value).get("ParameterName").is_some_and(|p| p.eq_ignore_ascii_case(parameter))
         });
         let before = match hit {
-            Some(i) => pipe_props(&std::mem::replace(&mut lines.params[i].1, line)).get("VariantValue").cloned(),
+            Some(i) => pipe_props(&std::mem::replace(&mut lines.params[i].1.value, line)).get("VariantValue").cloned(),
             None => {
-                lines.params.push((designator.to_owned(), line));
+                lines.params.push((Entry::new("", designator), Entry::new("", line)));
                 None
             }
         };
@@ -486,8 +492,8 @@ impl Project {
         let s = self.ini.section_mut(&sec).ok_or_else(|| Error::internal("variant section vanished"))?;
         let mut lines = VariantLines::take(s);
         let n = lines.variations.len() + lines.params.len();
-        lines.variations.retain(|x| !designator_of(x).eq_ignore_ascii_case(designator));
-        lines.params.retain(|(d, _)| !d.eq_ignore_ascii_case(designator));
+        lines.variations.retain(|x| !designator_of(&x.value).eq_ignore_ascii_case(designator));
+        lines.params.retain(|(d, _)| !d.value.eq_ignore_ascii_case(designator));
         let removed = n - lines.variations.len() - lines.params.len();
         lines.put(s);
         Ok(removed)
@@ -506,7 +512,7 @@ mod tests {
         p.set_variation("Lite", "R3", "\\QWERTYUI", &VariationKind::NotFitted).unwrap();
         p.set_variation("Lite", "R4", "\\ASDFGHJK", &VariationKind::Alternate("RES_ALT".into())).unwrap();
         p.set_param_variation("Lite", "R4", "Comment", "22k").unwrap();
-        let p = Project::from_bytes(Path::new("x.PrjPcb"), &p.ini.to_bytes()).unwrap();
+        let p = Project::from_bytes(Path::new("x.PrjPcb"), &p.ini.to_bytes().unwrap()).unwrap();
         let v = p.variant("Lite").unwrap();
         assert_eq!(v.variations.len(), 2);
         assert_eq!(v.variations[0].kind, "not_fitted");

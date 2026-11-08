@@ -291,7 +291,7 @@ pub fn project(a: &altium_doc::project::Project, b: &altium_doc::project::Projec
         let mut fields = BTreeMap::new();
         for section in &p.ini.sections {
             if section.name.starts_with("ProjectVariant") || section.name.starts_with("GeneratedDocument") { continue; }
-            for (key, value) in &section.entries { fields.insert(format!("{}.{}", section.name, key), value.clone()); }
+            for e in &section.entries { fields.insert(format!("{}.{}", section.name, e.key), e.value.clone()); }
         }
         fields
     };

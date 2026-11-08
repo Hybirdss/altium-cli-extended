@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use clap::Subcommand;
 use serde_json::{Value, json};
 
-use altium_core::error::{Error, ErrorCode, Result};
+use altium_core::error::Result;
 use altium_doc::outjob::OutJob;
 
 use crate::ctx::Ctx;
@@ -146,10 +146,6 @@ pub fn run(c: OutjobCmd, ctx: &Ctx) -> Result<Out> {
 }
 
 fn save(ctx: &Ctx, path: &Path, job: &OutJob) -> Result<Option<PathBuf>> {
-    let bytes = job.ini.to_bytes();
-    if altium_format::ini::Ini::parse(&bytes) != job.ini {
-        return Err(Error::new(ErrorCode::Unsafe, "the edited OutJob does not read back identically; nothing written")
-            .hint("a value probably contains a line break or a character the code page cannot store"));
-    }
+    let bytes = job.ini.write_over(&std::fs::read(path)?)?;
     ctx.write_file(path, &bytes)
 }

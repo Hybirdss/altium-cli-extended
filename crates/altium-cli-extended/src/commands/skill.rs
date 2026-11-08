@@ -342,8 +342,9 @@ ace skill show --raw
   or flag also gets a hint; follow it before guessing.
 - Native edits keep the first `<file>.bak` unless `--no-backup` is set. Preview with `--dry-run`,
   inspect `changes`, then apply. Close the document in Altium first. Binary edits preserve
-  untouched records and streams. Project and OutJob INI writes keep entry order, line endings,
-  and the BOM, but normalize spacing and omit comments and unrecognized lines.
+  untouched records and streams. Project and OutJob INI writes rewrite only the edited entries;
+  every other line, comments included, keeps its bytes. A value the code page cannot store is
+  refused with UNSAFE: pass `--codepage` with the file's code page.
   Keep a separate project copy for a multi-file ECO. There is no project checkpoint or transaction.
 - A comment such as `=Value` is a link. Set its Value parameter. Replacing the link needs
   `--literal`; dry runs mark `special_string`. Give rule lengths units, for example `0.2mm`.

@@ -42,7 +42,7 @@ Altium Designer 官方没有提供命令行工具——它是一个运行于 Win
 * **Linux Wine（可选）：** 在 Linux 下通过 Wine 驱动 Altium Designer。
 
 > **字节级安全写入与 Designer 说明：**
-> * 原生写入命令（`effect: write`）支持 `--dry-run`，默认保留首个备份文件 `<file>.bak`（除非传入 `--no-backup`），并在替换原文件前重新解析校验。二进制文档修改不会触碰无关记录和流；工程与 OutJob INI 文件写入会保留条目顺序、换行符和 BOM，但会规范化空行并忽略手写注释。
+> * 原生写入命令（`effect: write`）支持 `--dry-run`，默认保留首个备份文件 `<file>.bak`（除非传入 `--no-backup`），并在替换原文件前重新解析校验。二进制文档修改不会触碰无关记录和流；工程与 OutJob INI 文件写入只改写被编辑的条目，其余每一行（包括注释和空行）的字节、换行符和 BOM 均保持不变；代码页无法存储的值会以 `UNSAFE` 拒绝写入。
 > * Designer 已知限制：Designer 任务执行后，工程 `.PrjPcb` 及桥接脚本工程（`AltiumCliBridge.PrjScr`、`Job.PrjScr`）会保留在 Altium 的 Projects 面板中，且运行过 DRC 的 PCB 会显示为已修改。列表变长时可在 Projects 面板中手动关闭，并对未编辑的文件选择 **“Don't Save”**。
 
 ---
