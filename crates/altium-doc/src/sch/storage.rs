@@ -125,7 +125,7 @@ mod tests {
         data.extend(name);
         data.extend((comp.len() as u32).to_le_bytes());
         data.extend(&comp);
-        let buf = join_records(&[Record { kind: 0, data: b"|HEADER=Icon storage|WEIGHT=1\0".to_vec() }, Record { kind: 1, data }]);
+        let buf = join_records(&[Record { kind: 0, data: b"|HEADER=Icon storage|WEIGHT=1\0".to_vec() }, Record { kind: 1, data }]).unwrap();
         let mut w = vec![];
         let files = parse(&buf, &mut w);
         assert!(w.is_empty(), "{w:?}");

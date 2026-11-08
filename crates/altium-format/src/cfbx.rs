@@ -172,14 +172,19 @@ pub fn split_records(buf: &[u8]) -> (Vec<Record>, usize) {
     (out, buf.len() - pos)
 }
 
-pub fn join_records(records: &[Record]) -> Vec<u8> {
+/// Serialise records behind their kind/length words. A record must fit the 24-bit length.
+pub fn join_records(records: &[Record]) -> Result<Vec<u8>> {
     let mut out = Vec::new();
     for r in records {
-        let word = ((r.kind as u32) << 24) | (r.data.len() as u32 & 0x00FF_FFFF);
+        if r.data.len() > 0x00FF_FFFF {
+            return Err(Error::usage(format!("a record of {} bytes exceeds the 16 MiB record limit", r.data.len()))
+                .hint("shorten the value; nothing was written"));
+        }
+        let word = ((r.kind as u32) << 24) | r.data.len() as u32;
         out.extend(word.to_le_bytes());
         out.extend(&r.data);
     }
-    out
+    Ok(out)
 }
 
 /// Little-endian cursor over a binary record, with bounds-checked reads.
@@ -307,12 +312,20 @@ mod tests {
             Record { kind: 0, data: b"|A=1\0".to_vec() },
             Record { kind: 1, data: vec![1, 2, 3] },
         ];
-        let buf = join_records(&recs);
+        let buf = join_records(&recs).unwrap();
         let (back, left) = split_records(&buf);
         assert_eq!(left, 0);
         assert_eq!(back.len(), 2);
         assert_eq!(back[1].kind, 1);
         assert_eq!(back[0].props().raw("A"), Some("1"));
+    }
+
+    #[test]
+    fn oversized_record_is_refused() {
+        let at_limit = Record { kind: 0, data: vec![0; 0x00FF_FFFF] };
+        assert_eq!(join_records(std::slice::from_ref(&at_limit)).unwrap().len(), 4 + 0x00FF_FFFF);
+        let over = Record { kind: 0, data: vec![0; 0x0100_0000] };
+        assert_eq!(join_records(&[over]).unwrap_err().code, ErrorCode::Usage);
     }
 
     #[test]
