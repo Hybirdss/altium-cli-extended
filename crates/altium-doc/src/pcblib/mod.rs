@@ -297,8 +297,7 @@ fn load_compound(path: &Path, mut cf: Compound, keep_raw: bool) -> Result<PcbLib
             .find(|s| *s == name)
             .or_else(|| storages.iter().find(|s| s.eq_ignore_ascii_case(name)))
             .or_else(|| {
-                // Storage names cannot contain '/' (stored as '_') and are cut at 31 characters.
-                let short: String = name.replace('/', "_").chars().take(31).collect();
+                let short = edit::storage_name(name);
                 storages.iter().find(|s| s.eq_ignore_ascii_case(&short))
             })
             .cloned();

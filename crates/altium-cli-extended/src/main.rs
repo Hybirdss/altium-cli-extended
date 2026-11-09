@@ -198,12 +198,35 @@ fn fail(command: &str, e: &Error, json_mode: bool, pretty: bool) -> ! {
     std::process::exit(e.code.exit_code());
 }
 
+fn install_panic_hook() {
+    let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    let json_mode = want_json(&args);
+    let pretty = args.iter().any(|a| a == "--pretty");
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if !json_mode {
+            default_hook(info);
+            return;
+        }
+        let payload = info.payload();
+        let message = payload.downcast_ref::<&str>().copied()
+            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("panic");
+        let location = info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()));
+        let err = Error::new(altium_core::ErrorCode::Internal, format!("internal error: {message}"))
+            .hint("bug in altium-cli-extended; please report with the command line and, if you can share it, the input file")
+            .details(json!({"panic": message, "location": location}));
+        emit(&json!({"ok": false, "schema": output::SCHEMA, "command": "", "error": err}), pretty);
+    }));
+}
+
 fn main() {
+    install_panic_hook();
     // Windows gives the main thread 1 MiB of stack, which debug builds of the record decoders
     // overflow; run the command on a thread with a stack that is large on every platform.
     let worker = std::thread::Builder::new().stack_size(64 << 20).spawn(run).expect("spawn the main worker thread");
     if worker.join().is_err() {
-        std::process::exit(101);
+        std::process::exit(altium_core::ErrorCode::Internal.exit_code());
     }
 }
 

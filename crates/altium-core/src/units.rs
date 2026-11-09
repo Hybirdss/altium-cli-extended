@@ -12,6 +12,8 @@ use std::cell::Cell;
 pub const PER_MIL: f64 = 10_000.0;
 /// Internal units per mm.
 pub const PER_MM: f64 = PER_MIL * 1000.0 / 25.4;
+/// Largest length magnitude: the 100 in side of Altium's PCB workspace, in internal units.
+pub const MAX_LEN: f64 = 100_000.0 * PER_MIL;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -78,7 +80,8 @@ impl Coord {
         Coord(int * 100_000 + frac)
     }
 
-    /// Parse a PCB property length such as `"12.5mil"`, `"+0mil"`, `"0.3mm"`.
+    /// Parse a PCB property length such as `"12.5mil"`, `"+0mil"`, `"0.3mm"`. `None` for
+    /// non-numbers, NaN, infinity and lengths beyond [`MAX_LEN`].
     pub fn parse_len(s: &str) -> Option<Coord> {
         let s = s.trim();
         let (num, unit) = if let Some(p) = s.strip_suffix("mil") {
@@ -89,7 +92,8 @@ impl Coord {
             (s, "mil")
         };
         let v: f64 = num.trim().trim_start_matches('+').parse().ok()?;
-        Some(if unit == "mm" { Coord::from_mm(v) } else { Coord::from_mil(v) })
+        let raw = (v * if unit == "mm" { PER_MM } else { PER_MIL }).round();
+        (raw.abs() <= MAX_LEN).then_some(Coord(raw as i64))
     }
 }
 
@@ -145,5 +149,14 @@ mod tests {
         assert!((Coord::from_mm(25.4).mil() - 1000.0).abs() < 1e-6);
         assert_eq!(Coord::parse_len("+12.5mil"), Some(Coord(125_000)));
         assert_eq!(Coord::from_sch(1, 0).mil(), 10.0);
+    }
+
+    #[test]
+    fn parse_len_rejects_non_finite_and_out_of_range() {
+        for bad in ["NaNmm", "nanmil", "infmm", "-infmil", "1e15mm", "100000.1mil", "-2540.1mm"] {
+            assert_eq!(Coord::parse_len(bad), None, "{bad}");
+        }
+        assert_eq!(Coord::parse_len("100000mil"), Some(Coord(1_000_000_000)));
+        assert_eq!(Coord::parse_len("-2540mm"), Some(Coord(-1_000_000_000)));
     }
 }

@@ -234,6 +234,8 @@ fn bool_word(v: &str) -> Option<&'static str> {
     }
 }
 
+const LENGTH_HINT: &str = "give a number with mm or mil within 2540 mm (100 in) either way, for example 0.2mm or 8mil";
+
 /// Normalise a new value against the existing one: lengths need a unit and are written in
 /// mil, booleans become TRUE/FALSE, numbers must be numbers.
 fn normalise(key: &str, old: &str, new: &str) -> Result<String> {
@@ -243,7 +245,7 @@ fn normalise(key: &str, old: &str, new: &str) -> Result<String> {
         if !(n.ends_with("mil") || n.ends_with("mm")) {
             return Err(Error::usage(format!("{key} is a length ({old}); give a unit, e.g. 0.2mm or 8mil")));
         }
-        let c = Coord::parse_len(n).ok_or_else(|| Error::usage(format!("bad length {new:?}")))?;
+        let c = Coord::parse_len(n).ok_or_else(|| Error::usage(format!("bad length {new:?}")).hint(LENGTH_HINT))?;
         return Ok(mil_string(c));
     }
     if matches!(o, "TRUE" | "FALSE") {
@@ -522,7 +524,7 @@ pub fn set_component(doc: &PcbDoc, bytes: &[u8], designator: &str, field: &str, 
             if !(n.ends_with("mil") || n.ends_with("mm")) {
                 return Err(Error::usage("height is a length; give a unit, e.g. 2.5mm"));
             }
-            mil_string(Coord::parse_len(n).ok_or_else(|| Error::usage(format!("bad length {value:?}")))?)
+            mil_string(Coord::parse_len(n).ok_or_else(|| Error::usage(format!("bad length {value:?}")).hint(LENGTH_HINT))?)
         }
         _ => value.to_owned(),
     };

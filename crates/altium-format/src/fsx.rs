@@ -48,18 +48,39 @@ pub fn preserve(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Replace `path` atomically, keeping the first `<file>.bak` unless disabled.
+/// Replace `path` atomically, keeping the first `<file>.bak` unless disabled. A symlink is
+/// followed and its target replaced, the file's permissions carry over to the new file and
+/// the backup, and a read-only file is refused.
 /// Returns the backup path, including an existing backup kept from an earlier write.
 pub fn replace(path: &Path, bytes: &[u8], opts: WriteOpts) -> Result<Option<PathBuf>> {
     if opts.dry_run {
         return Ok(None);
     }
+    let resolved;
+    let path = if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        resolved = std::fs::canonicalize(path)
+            .map_err(|e| Error::from(e).hint("the link points to a file that cannot be reached; fix the link or pass the target path"))?;
+        resolved.as_path()
+    } else {
+        path
+    };
+    let original = match std::fs::metadata(path) {
+        Ok(m) if m.is_file() => Some(m.permissions()),
+        Ok(_) => None,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(Error::from(e)),
+    };
+    if original.as_ref().is_some_and(|p| p.readonly()) {
+        return Err(Error::new(ErrorCode::Unsafe, format!("{} is read-only", path.display()))
+            .hint("a read-only design file usually means you do not hold its lock: check it out or get the lock in your version control or vault, then retry; the design was not changed"));
+    }
     let mut backup = None;
-    if path.exists() && !opts.no_backup {
+    if let Some(perms) = original.as_ref().filter(|_| !opts.no_backup) {
         let b = suffixed(path, ".bak");
         match std::fs::OpenOptions::new().write(true).create_new(true).open(&b) {
             Ok(mut dest) => {
                 let copied = (|| -> std::io::Result<()> {
+                    dest.set_permissions(perms.clone())?;
                     let mut source = std::fs::File::open(path)?;
                     std::io::copy(&mut source, &mut dest)?;
                     dest.sync_all()
@@ -79,6 +100,9 @@ pub fn replace(path: &Path, bytes: &[u8], opts: WriteOpts) -> Result<Option<Path
     let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp)
         .map_err(|e| Error::from(e).hint("check permissions and remove a stale .altium-cli-extended.tmp file after checking no writer is active"))?;
     let mut temp = TempFile { path: tmp, renamed: false };
+    if let Some(perms) = original {
+        file.set_permissions(perms)?;
+    }
     file.write_all(bytes)?;
     file.sync_all()?;
     drop(file);
@@ -140,6 +164,57 @@ mod tests {
         assert!(replace(&p, b"new", WriteOpts::default()).is_err());
         assert_eq!(std::fs::read(&p).unwrap(), b"original");
         assert_eq!(std::fs::read(&tmp).unwrap(), b"another writer");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn read_only_file_is_refused() {
+        let dir = dir("readonly");
+        let p = dir.join("board.PcbDoc");
+        std::fs::write(&p, b"original").unwrap();
+        let mut perms = std::fs::metadata(&p).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&p, perms.clone()).unwrap();
+        let e = replace(&p, b"new", WriteOpts::default()).unwrap_err();
+        assert_eq!(e.code, altium_core::ErrorCode::Unsafe);
+        assert!(e.hint.unwrap().contains("lock"));
+        assert_eq!(std::fs::read(&p).unwrap(), b"original");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        std::fs::set_permissions(&p, perms).unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_mode_carries_over_to_file_and_backup() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = dir("mode");
+        let p = dir.join("board.PcbDoc");
+        std::fs::write(&p, b"original").unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let b = replace(&p, b"new", WriteOpts::default()).unwrap().unwrap();
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&p), 0o600);
+        assert_eq!(mode(&b), 0o600);
+        assert_eq!(std::fs::read(&p).unwrap(), b"new");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_target_is_written_and_link_kept() {
+        let dir = dir("symlink");
+        let real = dir.join("real.SchDoc");
+        let link = dir.join("link.SchDoc");
+        std::fs::write(&real, b"original").unwrap();
+        std::os::unix::fs::symlink("real.SchDoc", &link).unwrap();
+        let b = replace(&link, b"new", WriteOpts::default()).unwrap().unwrap();
+        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read(&real).unwrap(), b"new");
+        assert_eq!(b, std::fs::canonicalize(&dir).unwrap().join("real.SchDoc.bak"));
+        assert_eq!(std::fs::read(&b).unwrap(), b"original");
         std::fs::remove_dir_all(dir).unwrap();
     }
 

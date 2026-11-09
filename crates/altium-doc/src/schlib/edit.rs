@@ -91,7 +91,7 @@ pub fn set_param(lib: &SchLib, bytes: &[u8], symbol: &str, name: &str, value: &s
             changes.push(Change { symbol: sym.name.clone(), stream: stream.clone(), record: recs.len() - 1, action: "create".into(), key: name.into(), before: None, after: value.into() });
         }
     }
-    cf.write(&stream, &join_records(&recs))?;
+    cf.write(&stream, &join_records(&recs)?)?;
     Ok((cf.into_bytes()?, changes))
 }
 
@@ -111,7 +111,7 @@ pub fn set_description(lib: &SchLib, bytes: &[u8], symbol: &str, value: &str) ->
     let before = r.props().get("COMPONENTDESCRIPTION");
     set_text_field(&mut r.data, "COMPONENTDESCRIPTION", value);
     let mut changes = vec![Change { symbol: sym.name.clone(), stream: stream.clone(), record: 0, action: "set".into(), key: "COMPONENTDESCRIPTION".into(), before, after: value.into() }];
-    cf.write(&stream, &join_records(&recs))?;
+    cf.write(&stream, &join_records(&recs)?)?;
     let mut fh = text_records(&mut cf, "FileHeader")?;
     let h = fh.first_mut().ok_or_else(|| unsafe_err("empty FileHeader"))?;
     let hp = h.props();
@@ -120,7 +120,7 @@ pub fn set_description(lib: &SchLib, bytes: &[u8], symbol: &str, value: &str) ->
         let before = hp.get(&k);
         set_text_field(&mut h.data, &k, value);
         changes.push(Change { symbol: sym.name.clone(), stream: "FileHeader".into(), record: 0, action: "set".into(), key: k, before, after: value.into() });
-        cf.write("FileHeader", &join_records(&fh))?;
+        cf.write("FileHeader", &join_records(&fh)?)?;
     }
     Ok((cf.into_bytes()?, changes))
 }

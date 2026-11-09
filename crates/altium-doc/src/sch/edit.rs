@@ -193,7 +193,7 @@ impl<'a> Editor<'a> {
             put_field(&mut self.recs[0].data, "WEIGHT", count.as_bytes(), None);
         }
         let mut cf = Compound::from_bytes(&self.doc.path, self.doc.bytes.clone())?;
-        cf.write("FileHeader", &join_records(&self.recs))?;
+        cf.write("FileHeader", &join_records(&self.recs)?)?;
         Ok((cf.into_bytes()?, renumbered, self.changes))
     }
 }

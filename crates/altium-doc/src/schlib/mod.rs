@@ -199,6 +199,10 @@ fn load_compound(path: &Path, mut cf: Compound, keep_raw: bool) -> Result<SchLib
             return Err(Error::new(ErrorCode::WrongFileType, format!("{} is a schematic sheet ({htext})", path.display()))
                 .hint("use `ace sch ...`"));
         }
+        if !htext.to_ascii_lowercase().contains("library") {
+            return Err(Error::new(ErrorCode::WrongFileType, format!("{} is not a schematic library (FileHeader header {htext:?})", path.display()))
+                .hint("pass a .SchLib saved by Altium Designer; `ace raw streams <file>` shows what the file holds"));
+        }
         warnings.push(format!("unexpected FileHeader header {htext:?}; parsing anyway"));
     }
     // Library references and their storage names.

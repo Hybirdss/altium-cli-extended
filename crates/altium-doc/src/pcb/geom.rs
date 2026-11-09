@@ -79,8 +79,8 @@ impl BBoxAcc {
     }
     /// Add a disc (point with radius), e.g. a round track end.
     pub fn add_r(&mut self, x: i64, y: i64, r: i64) {
-        self.add(x - r, y - r);
-        self.add(x + r, y + r);
+        self.add(x.saturating_sub(r), y.saturating_sub(r));
+        self.add(x.saturating_add(r), y.saturating_add(r));
     }
     pub fn merge(&mut self, o: &BBoxAcc) {
         if o.any {
@@ -92,8 +92,8 @@ impl BBoxAcc {
         self.any.then(|| BBox {
             min: Point::new(Coord(self.lo.0), Coord(self.lo.1)),
             max: Point::new(Coord(self.hi.0), Coord(self.hi.1)),
-            width: Coord(self.hi.0 - self.lo.0),
-            height: Coord(self.hi.1 - self.lo.1),
+            width: Coord(self.hi.0.saturating_sub(self.lo.0)),
+            height: Coord(self.hi.1.saturating_sub(self.lo.1)),
         })
     }
 }
