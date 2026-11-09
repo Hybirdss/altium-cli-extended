@@ -29,6 +29,8 @@ thread_local! {
     static MISMATCH: Cell<Option<&'static Encoding>> = const { Cell::new(None) };
     /// Code page that windows-1252 text with no `%UTF8%` copy reads like (see [`codepage_guess`]).
     static GUESS: Cell<Option<&'static Encoding>> = const { Cell::new(None) };
+    /// Off once the user names the code page, so a guess never overrides their choice.
+    static GUESSING: Cell<bool> = const { Cell::new(true) };
 }
 
 /// ANSI code pages Altium files are commonly saved in, tried when the text does not match.
@@ -85,7 +87,7 @@ fn guesses() -> [(&'static Encoding, Letter); 4] {
 /// non-ASCII characters, which accented Latin text does not produce, and exactly one candidate
 /// decodes it into nothing but letters of its script. Two fits mean no guess.
 fn note_ansi(b: &[u8]) {
-    if codepage() != WINDOWS_1252 || GUESS.with(|g| g.get()).is_some() {
+    if codepage() != WINDOWS_1252 || !GUESSING.with(|g| g.get()) || GUESS.with(|g| g.get()).is_some() {
         return;
     }
     if !b.split(u8::is_ascii).any(|run| run.len() >= 4) {
@@ -113,12 +115,19 @@ pub fn check_mixing(text: &str) -> Result<()> {
     if text.is_ascii() {
         return Ok(());
     }
-    match MISMATCH.with(|m| m.get()).or(GUESS.with(|g| g.get())) {
-        Some(file) => Err(Error::new(
-            ErrorCode::Unsafe,
-            format!("this file stores non-ASCII text in {}, not {}; writing {text:?} would mix the two in one file; nothing written", file.name(), codepage().name()),
-        )
-        .hint(format!("rerun with --codepage {} (or set ACE_CODEPAGE)", file.name().to_ascii_lowercase()))),
+    let confirmed = MISMATCH.with(|m| m.get());
+    match confirmed.or(GUESS.with(|g| g.get())) {
+        Some(file) => {
+            let mut hint = format!("rerun with --codepage {} (or set ACE_CODEPAGE)", file.name().to_ascii_lowercase());
+            if confirmed.is_none() {
+                hint.push_str(&format!("; if the file really is {}, pass --codepage {} to stop guessing", codepage().name(), codepage().name().to_ascii_lowercase()));
+            }
+            Err(Error::new(
+                ErrorCode::Unsafe,
+                format!("this file stores non-ASCII text in {}, not {}; writing {text:?} would mix the two in one file; nothing written", file.name(), codepage().name()),
+            )
+            .hint(hint))
+        }
         None => Ok(()),
     }
 }
@@ -132,6 +141,12 @@ pub fn set_codepage(label: &str) -> Option<&'static str> {
     MISMATCH.with(|m| m.set(None));
     GUESS.with(|g| g.set(None));
     Some(enc.name())
+}
+
+/// The user named the code page (`--codepage` or `ACE_CODEPAGE`): stop guessing another one.
+pub fn trust_codepage() {
+    GUESSING.with(|g| g.set(false));
+    GUESS.with(|g| g.set(None));
 }
 
 pub fn codepage() -> &'static Encoding {

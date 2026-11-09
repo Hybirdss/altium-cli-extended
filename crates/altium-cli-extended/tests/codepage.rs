@@ -59,8 +59,20 @@ fn pcb_parameters_without_utf8_copies_suggest_gbk() {
     let dir = tempdir("codepage-pcb");
     let copy = copy_to(&pcb, &dir);
     let original = std::fs::read(&copy).unwrap();
-    err(&["pcb", "set-param", &s(&copy), "U2", "Note", "±5%"], "UNSAFE");
+    let v = err(&["pcb", "set-param", &s(&copy), "U2", "Note", "±5%"], "UNSAFE");
+    assert!(v["error"]["hint"].as_str().unwrap().contains("--codepage windows-1252"), "{v}");
     assert_eq!(std::fs::read(&copy).unwrap(), original);
+}
+
+#[test]
+fn naming_the_code_page_overrides_a_guess() {
+    let Some(root) = samples() else { return };
+    let dir = tempdir("codepage-explicit");
+    let copy = copy_to(&root.join("AirPi_PCB/AirPi_Power/AirPi_Power.PcbDoc"), &dir);
+    let (_, v) = run(&["pcb", "components", &s(&copy), "--where", "designator=U2", "--codepage", "windows-1252"]);
+    assert!(!warns_about(&v, "gbk"), "{v}");
+    assert!(v["meta"]["suggest"].is_null(), "{v}");
+    ok(&["pcb", "set-param", &s(&copy), "U2", "Note", "±5%", "--codepage", "windows-1252"]);
 }
 
 #[test]
