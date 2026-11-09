@@ -4,13 +4,17 @@
 //! writes to real design files use these functions instead: they change only the bytes of the
 //! field being edited, so Altium sees the rest of the record exactly as it wrote it.
 
-use crate::props::codepage;
+use altium_core::error::Result;
 
-/// ANSI bytes for a value; characters the code page cannot represent become `?`.
-pub fn encode_ansi_strict(s: &str) -> Vec<u8> {
+use crate::props::{check_mixing, codepage};
+
+/// ANSI bytes for a value; characters the code page cannot represent become `?`. Refused when
+/// the file stores its text in another code page (see [`check_mixing`]).
+pub fn encode_ansi_strict(s: &str) -> Result<Vec<u8>> {
     if s.is_ascii() {
-        return s.as_bytes().to_vec();
+        return Ok(s.as_bytes().to_vec());
     }
+    check_mixing(s)?;
     let enc = codepage();
     let mut out = Vec::new();
     let mut buf = [0u8; 4];
@@ -26,7 +30,7 @@ pub fn encode_ansi_strict(s: &str) -> Vec<u8> {
             out.extend_from_slice(&b);
         }
     }
-    out
+    Ok(out)
 }
 
 /// Byte ranges `(field_start, value_start, value_end)` of each `|KEY=VALUE` field, where
@@ -86,7 +90,8 @@ pub fn drop_field(data: &mut Vec<u8>, key: &str) -> bool {
 
 /// Set a text value the way Altium stores it: ANSI under `KEY`, plus `%UTF8%KEY` when the
 /// value is not ASCII or a UTF-8 copy already exists.
-pub fn set_text_field(data: &mut Vec<u8>, key: &str, value: &str) {
+pub fn set_text_field(data: &mut Vec<u8>, key: &str, value: &str) -> Result<()> {
+    let ansi = encode_ansi_strict(value)?;
     let utf8_key = format!("%UTF8%{key}");
     let has_utf8 = find_field(data, &utf8_key).is_some();
     if has_utf8 || !value.is_ascii() {
@@ -96,7 +101,8 @@ pub fn set_text_field(data: &mut Vec<u8>, key: &str, value: &str) {
             put_field(data, &utf8_key, value.as_bytes(), None);
         }
     }
-    put_field(data, key, &encode_ansi_strict(value), None);
+    put_field(data, key, &ansi, None);
     drop_field(data, &format!("UNICODE__{key}"));
+    Ok(())
 }
 

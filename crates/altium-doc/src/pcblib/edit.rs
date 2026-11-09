@@ -92,11 +92,11 @@ fn check_footprint_name(name: &str) -> Result<()> {
     if name.contains('=') || name.trim() != name {
         return Err(Error::usage(format!("footprint name {name:?} cannot contain = or leading/trailing spaces")).hint("remove = and surrounding spaces"));
     }
-    if decode_ansi(&encode_ansi_strict(name)) != name {
+    if decode_ansi(&encode_ansi_strict(name)?) != name {
         return Err(Error::usage("name has characters the current code page cannot store")
             .hint("choose an ANSI-encodable name or pass --codepage <label> matching the library"));
     }
-    if encode_ansi_strict(name).len() > 255 {
+    if encode_ansi_strict(name)?.len() > 255 {
         return Err(Error::usage(format!("footprint name {name:?} is longer than 255 bytes")).hint("shorten the name to at most 255 encoded bytes"));
     }
     Ok(())
@@ -149,7 +149,7 @@ impl List {
         out.extend((self.names.len() as u32).to_le_bytes());
         for n in &self.names {
             check_footprint_name(n)?;
-            let b = encode_ansi_strict(n);
+            let b = encode_ansi_strict(n)?;
             if b.is_empty() || b.len() > 255 {
                 return Err(unsafe_err(format!("footprint name {n:?} does not fit the library list")));
             }
@@ -194,7 +194,7 @@ fn set_data_name(data: &[u8], name: &str) -> Result<Vec<u8>> {
     if n < 1 || 4 + n > data.len() || data[4] as usize + 1 != n {
         return Err(unsafe_err("footprint Data stream does not start with a length-prefixed name; refusing to rewrite it"));
     }
-    let b = encode_ansi_strict(name);
+    let b = encode_ansi_strict(name)?;
     if b.is_empty() || b.len() > 255 {
         return Err(unsafe_err(format!("footprint name {name:?} does not fit the Data stream")));
     }
@@ -212,7 +212,7 @@ fn set_pattern(buf: &[u8], from: &str, to: &str) -> Result<Vec<u8>> {
     if Props::parse(&body).get("PATTERN").as_deref() != Some(from) {
         return Ok(buf.to_vec());
     }
-    set_text_field(&mut body, "PATTERN", to);
+    set_text_field(&mut body, "PATTERN", to)?;
     join_record(word, &body)
 }
 
@@ -417,7 +417,7 @@ pub fn set_param(lib: &PcbLib, bytes: &[u8], footprint: &str, name: &str, value:
     }
     let stored_key = p.entries().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(k, _)| k.to_owned()).unwrap_or_else(|| key.to_owned());
     let mut body = body;
-    set_text_field(&mut body, key, &after);
+    set_text_field(&mut body, key, &after)?;
     s.cf.write(&stream, &join_record(word, &body)?)?;
     s.written.push(stream.clone());
     s.changes.push(Change {

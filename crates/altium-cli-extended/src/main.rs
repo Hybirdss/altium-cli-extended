@@ -321,10 +321,15 @@ fn run() {
             let (shape_warnings, similar) = shape.diagnostics(&out.data);
             out.warnings.extend(shape_warnings);
             shape.apply(&mut out.data);
+            let current = altium_format::props::codepage().name();
             if let Some(cp) = altium_format::props::codepage_mismatch() {
                 out.warnings.push(format!(
-                    "non-ASCII text in this file is stored in {cp}, not {}: rerun with --codepage {} (or set ACE_CODEPAGE) to decode names and parameters correctly",
-                    altium_format::props::codepage().name(),
+                    "non-ASCII text in this file is stored in {cp}, not {current}: rerun with --codepage {} (or set ACE_CODEPAGE) to decode names and parameters correctly",
+                    cp.to_ascii_lowercase()
+                ));
+            } else if let Some(cp) = altium_format::props::codepage_guess() {
+                out.warnings.push(format!(
+                    "non-ASCII text without a UTF-8 copy was decoded as {current} but reads like {cp}: if names or parameters look garbled, rerun with --codepage {} (or set ACE_CODEPAGE)",
                     cp.to_ascii_lowercase()
                 ));
             }
@@ -351,7 +356,7 @@ fn run() {
                             "elapsed_ms": started.elapsed().as_millis() as u64,
                             "version": env!("CARGO_PKG_VERSION"),
                             "similar": similar,
-                            "suggest": altium_format::props::codepage_mismatch().map(|cp| json!({"codepage":cp.to_ascii_lowercase()})),
+                            "suggest": altium_format::props::codepage_mismatch().or(altium_format::props::codepage_guess()).map(|cp| json!({"codepage":cp.to_ascii_lowercase()})),
                         }
                     }),
                     pretty,

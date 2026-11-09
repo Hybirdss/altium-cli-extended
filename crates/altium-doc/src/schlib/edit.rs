@@ -57,7 +57,7 @@ pub fn set_param(lib: &SchLib, bytes: &[u8], symbol: &str, name: &str, value: &s
             if before.as_deref() == Some(value) {
                 return Ok((bytes.to_vec(), vec![]));
             }
-            set_text_field(&mut r.data, "TEXT", value);
+            set_text_field(&mut r.data, "TEXT", value)?;
             changes.push(Change { symbol: sym.name.clone(), stream: stream.clone(), record: p.index, action: "set".into(), key: p.name.clone(), before, after: value.into() });
         }
         None => {
@@ -74,19 +74,19 @@ pub fn set_param(lib: &SchLib, bytes: &[u8], symbol: &str, name: &str, value: &s
             // Fields go in front of the record's terminating NUL.
             let mut data = vec![0u8];
             let mut put = |k: &str, v: &str| set_text_field(&mut data, k, v);
-            put("RECORD", "41");
+            put("RECORD", "41")?;
             if let Some(t) = &tmpl {
                 for k in ["OWNERINDEX", "OWNERPARTID", "LOCATION.X", "LOCATION.X_FRAC", "LOCATION.Y", "LOCATION.Y_FRAC", "COLOR", "FONTID"] {
                     if let Some(v) = t.raw(k) {
-                        put(k, v);
+                        put(k, v)?;
                     }
                 }
             } else {
-                put("OWNERPARTID", "-1");
+                put("OWNERPARTID", "-1")?;
             }
-            put("ISHIDDEN", "T");
-            put("TEXT", value);
-            put("NAME", name);
+            put("ISHIDDEN", "T")?;
+            put("TEXT", value)?;
+            put("NAME", name)?;
             recs.push(Record { kind: 0, data });
             changes.push(Change { symbol: sym.name.clone(), stream: stream.clone(), record: recs.len() - 1, action: "create".into(), key: name.into(), before: None, after: value.into() });
         }
@@ -109,7 +109,7 @@ pub fn set_description(lib: &SchLib, bytes: &[u8], symbol: &str, value: &str) ->
     let mut recs = text_records(&mut cf, &stream)?;
     let r = recs.first_mut().filter(|r| r.is_text()).ok_or_else(|| unsafe_err("the symbol has no component record"))?;
     let before = r.props().get("COMPONENTDESCRIPTION");
-    set_text_field(&mut r.data, "COMPONENTDESCRIPTION", value);
+    set_text_field(&mut r.data, "COMPONENTDESCRIPTION", value)?;
     let mut changes = vec![Change { symbol: sym.name.clone(), stream: stream.clone(), record: 0, action: "set".into(), key: "COMPONENTDESCRIPTION".into(), before, after: value.into() }];
     cf.write(&stream, &join_records(&recs)?)?;
     let mut fh = text_records(&mut cf, "FileHeader")?;
@@ -118,7 +118,7 @@ pub fn set_description(lib: &SchLib, bytes: &[u8], symbol: &str, value: &str) ->
     if let Some(i) = (0..hp.int_or("COMPCOUNT", 0)).find(|i| hp.get(&format!("LIBREF{i}")).is_some_and(|l| l.eq_ignore_ascii_case(&sym.name))) {
         let k = format!("COMPDESCR{i}");
         let before = hp.get(&k);
-        set_text_field(&mut h.data, &k, value);
+        set_text_field(&mut h.data, &k, value)?;
         changes.push(Change { symbol: sym.name.clone(), stream: "FileHeader".into(), record: 0, action: "set".into(), key: k, before, after: value.into() });
         cf.write("FileHeader", &join_records(&fh)?)?;
     }

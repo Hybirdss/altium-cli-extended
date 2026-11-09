@@ -42,7 +42,7 @@ Altium Designer には公式の CLI が存在せず、Windows 上で `X2.EXE` �
 * **Linux 上の Wine（オプション）：** Wine 環境下の Altium Designer を駆動します。
 
 > **バイトセーフ書き込みと Designer の注意事項：**
-> * ネイティブ書き込み（`effect: write`）は `--dry-run` に対応し、`--no-backup` を指定しない限り最初の `<file>.bak` を保持し、ファイルを置き換える前に変更後のバイト列を再パースして検証します。バイナリドキュメントの編集では、変更対象外のレコードやストリームは一切変更されません。プロジェクトと OutJob の INI 書き込みは編集したエントリだけを書き換え、コメントや空行を含むそれ以外の行はバイト列・改行コード・BOM まで元のまま保持します。コードページで表現できない値は `UNSAFE` で拒否します。
+> * ネイティブ書き込み（`effect: write`）は `--dry-run` に対応し、`--no-backup` を指定しない限り最初の `<file>.bak` を保持し、ファイルを置き換える前に変更後のバイト列を再パースして検証します。バイナリドキュメントの編集では、変更対象外のレコードやストリームは一切変更されません。プロジェクトと OutJob の INI 書き込みは編集したエントリだけを書き換え、コメントや空行を含むそれ以外の行はバイト列・改行コード・BOM まで元のまま保持します。コードページで表現できない値は `UNSAFE` で拒否します。ファイルのテキストが `--codepage` と異なるコードページで保存されている場合、非 ASCII テキストの書き込みも `UNSAFE` で拒否し、hint で指定すべきコードページを示します。
 > * 既知の制限事項：Designer ジョブを実行すると、`.PrjPcb` およびブリッジ用スクリプトプロジェクト（`AltiumCliBridge.PrjScr`、`Job.PrjScr`）が Altium の Projects パネルに開いたまま残り、DRC を実行した基板は変更済み（Modified）として表示されます。リストが増えた場合は Projects パネルから手動で閉じ、編集していないファイルには **「Don't Save」** を選択してください。
 
 ---
@@ -106,7 +106,7 @@ ace pcblib rename Footprints.PcbLib SOIC-8 SOIC-8N --dry-run
 ```
 
 * **フィルタとフィールド選択：** すべてのリスト出力は `--fields`、`--where`（`key=value`、`key!=value`、`key~regex`、`key^=substring`）、`--limit` で整形できます。
-* **単位と文字コード：** 長さの単位はデフォルトで `mm` です（`--units mil|raw` または `ACE_UNITS` で変更可能）。レガシー文字コードは `--codepage` または `ACE_CODEPAGE` で設定します。
+* **単位と文字コード：** 長さの単位はデフォルトで `mm` です（`--units mil|raw` または `ACE_UNITS` で変更可能）。レガシー文字コードは `--codepage` または `ACE_CODEPAGE` で設定します。非 ASCII テキストが別のコードページ（GBK、Shift_JIS、EUC-KR、windows-1251）に見える場合は、警告と `meta.suggest.codepage` で知らせます。デコード結果は `--codepage` を指定したときだけ変わります。
 
 ---
 

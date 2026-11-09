@@ -332,8 +332,9 @@ ace skill show --raw
 - Read warnings before using counts. Check `documents_declared`, `documents_found`, and
   `missing_documents`. Missing design sheets disable sync checks and produce `incomplete-project`.
 - If a codepage warning suggests `gbk` or `windows-1251`, set `ACE_CODEPAGE` for every later
-  call. Use `--codepage gbk` for a GBK suggestion. `meta.suggest.codepage` carries the suggestion. Unmarked text may still need a known
-  codepage from the author. Automatic detection is not supported.
+  call. Use `--codepage gbk` for a GBK suggestion. `meta.suggest.codepage` carries the suggestion. A
+  suggestion from text with no UTF-8 copy is a guess ("reads like"); decoding never changes without
+  `--codepage`. Short or mixed text may still need a known codepage from the author.
 - Use `--where name=GND`, `--where name^=clk`, `--where designator~^R`, `--fields`, and
   `--limit` instead of piping to `head`. `matched` counts filtered rows before the limit.
   `--limit 0` returns the counts and summary without rows. Dotted fields work on lists and
@@ -344,7 +345,8 @@ ace skill show --raw
   inspect `changes`, then apply. Close the document in Altium first. Binary edits preserve
   untouched records and streams. Project and OutJob INI writes rewrite only the edited entries;
   every other line, comments included, keeps its bytes. A value the code page cannot store is
-  refused with UNSAFE: pass `--codepage` with the file's code page.
+  refused with UNSAFE: pass `--codepage` with the file's code page. Non-ASCII text is also
+  refused with UNSAFE while the file's text is in another code page; the hint names it.
   Keep a separate project copy for a multi-file ECO. There is no project checkpoint or transaction.
 - A comment such as `=Value` is a link. Set its Value parameter. Replacing the link needs
   `--literal`; dry runs mark `special_string`. Give rule lengths units, for example `0.2mm`.

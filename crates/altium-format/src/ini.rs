@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use altium_core::error::{Error, ErrorCode, Result};
-use crate::props::{codepage, decode_ansi};
+use crate::props::{check_mixing, codepage, decode_ansi};
 
 const BOM: &[u8] = b"\xef\xbb\xbf";
 
@@ -129,6 +129,7 @@ fn encode(text: &str) -> Result<Vec<u8>> {
     if text.is_ascii() {
         return Ok(text.as_bytes().to_vec());
     }
+    check_mixing(text)?;
     let (bytes, _, unmappable) = codepage().encode(text);
     if unmappable || text.contains('\u{FFFD}') {
         return Err(Error::new(ErrorCode::Unsafe, format!("{text:?} cannot be stored in {}; nothing written", codepage().name()))

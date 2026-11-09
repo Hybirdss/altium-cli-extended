@@ -42,7 +42,7 @@ Altium Designer는 공식 CLI를 제공하지 않으며 `X2.EXE`로 실행되는
 * **Linux Wine (선택 사항):** Wine 환경에서 실행되는 Altium Designer를 구동합니다.
 
 > **바이트 안전 쓰기 및 Designer 참고사항:**
-> * 네이티브 쓰기(`effect: write`)는 `--dry-run`을 지원하며, `--no-backup`을 주지 않는 한 최초 원본을 `<file>.bak`에 보존하고, 파일을 교체하기 전에 수정된 바이트를 다시 파싱해 무결성을 검증합니다. 바이너리 문서 편집 시 수정하지 않은 레코드와 스트림은 원본 그대로 유지됩니다. 프로젝트와 OutJob INI 쓰기는 편집한 항목만 다시 쓰며, 주석과 빈 줄을 포함한 나머지 모든 줄은 바이트, 줄바꿈, BOM까지 그대로 유지됩니다. 코드 페이지에 저장할 수 없는 값은 `UNSAFE`로 거부합니다.
+> * 네이티브 쓰기(`effect: write`)는 `--dry-run`을 지원하며, `--no-backup`을 주지 않는 한 최초 원본을 `<file>.bak`에 보존하고, 파일을 교체하기 전에 수정된 바이트를 다시 파싱해 무결성을 검증합니다. 바이너리 문서 편집 시 수정하지 않은 레코드와 스트림은 원본 그대로 유지됩니다. 프로젝트와 OutJob INI 쓰기는 편집한 항목만 다시 쓰며, 주석과 빈 줄을 포함한 나머지 모든 줄은 바이트, 줄바꿈, BOM까지 그대로 유지됩니다. 코드 페이지에 저장할 수 없는 값은 `UNSAFE`로 거부합니다. 파일의 텍스트가 `--codepage`와 다른 코드 페이지로 저장되어 있으면 비ASCII 텍스트 쓰기도 `UNSAFE`로 거부하며, hint에 넘길 코드 페이지를 알려 줍니다.
 > * 알려진 제한 사항: Designer 작업이 끝나면 `.PrjPcb`와 브리지 스크립트 프로젝트(`AltiumCliBridge.PrjScr`, `Job.PrjScr`)가 Altium의 Projects 패널에 열린 채로 남으며, DRC를 실행한 보드는 수정됨(Modified) 상태로 표시됩니다. 목록이 많아지면 Projects 패널에서 직접 닫고, 편집하지 않은 항목에는 **"Don't Save"**를 선택하세요.
 
 ---
@@ -106,7 +106,7 @@ ace pcblib rename Footprints.PcbLib SOIC-8 SOIC-8N --dry-run
 ```
 
 * **필터링 및 필드 선택:** 모든 목록 명령어는 `--fields`, `--where` (`key=value`, `key!=value`, `key~regex`, `key^=substring`), `--limit`으로 원하는 행과 열만 추출할 수 있습니다.
-* **단위 및 인코딩:** 길이 단위는 기본 `mm`이며 `--units mil|raw` 또는 `ACE_UNITS` 환경 변수로 변경할 수 있습니다. 레거시 문자열 인코딩은 `--codepage` 또는 `ACE_CODEPAGE`로 설정합니다.
+* **단위 및 인코딩:** 길이 단위는 기본 `mm`이며 `--units mil|raw` 또는 `ACE_UNITS` 환경 변수로 변경할 수 있습니다. 레거시 문자열 인코딩은 `--codepage` 또는 `ACE_CODEPAGE`로 설정합니다. 비ASCII 텍스트가 다른 코드 페이지(GBK, Shift_JIS, EUC-KR, windows-1251)로 보이면 경고와 `meta.suggest.codepage`로 알려 주며, 디코딩은 `--codepage`를 줄 때만 바뀝니다.
 
 ---
 
