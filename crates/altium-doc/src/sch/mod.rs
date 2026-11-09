@@ -24,7 +24,7 @@ use serde::Serialize;
 use altium_core::error::Result;
 
 pub use doc::{Component, LoadOptions, SchDoc, SchRecord, load, load_bytes, load_with};
-pub use project::{project_design, Hierarchy, ProjectNetlist};
+pub use project::{Hierarchy, ProjectNetlist, project_design};
 
 use crate::model::{Design, Net, Node, Part};
 
@@ -42,7 +42,8 @@ pub(crate) fn merge_part(parts: &mut Vec<Part>, c: &Component, designator: &str,
         }
         for prm in &c.parameters {
             if !prm.name.eq_ignore_ascii_case("Comment") && !p.parameters.contains_key(&prm.name) {
-                p.parameters.insert(prm.name.clone(), prm.effective().to_owned());
+                p.parameters
+                    .insert(prm.name.clone(), prm.effective().to_owned());
             }
         }
         if p.footprint.is_empty() {
@@ -105,8 +106,16 @@ pub fn design_of(d: &SchDoc, opts: &connect::NetOptions) -> Design {
                 .nodes
                 .into_iter()
                 .flat_map(|x| {
-                    let pads = if x.pads.is_empty() { vec![x.pin.clone()] } else { x.pads.clone() };
-                    pads.into_iter().map(move |pad| Node { designator: x.designator.clone(), pin: pad, pin_name: x.pin_name.clone() })
+                    let pads = if x.pads.is_empty() {
+                        vec![x.pin.clone()]
+                    } else {
+                        x.pads.clone()
+                    };
+                    pads.into_iter().map(move |pad| Node {
+                        designator: x.designator.clone(),
+                        pin: pad,
+                        pin_name: x.pin_name.clone(),
+                    })
                 })
                 .collect(),
             auto_named: n.auto_named,
@@ -114,7 +123,9 @@ pub fn design_of(d: &SchDoc, opts: &connect::NetOptions) -> Design {
         });
     }
     if single > 0 && !opts.single_pin_nets {
-        warnings.push(format!("{single} unnamed single-pin net(s) left out (NetlistSinglePinNets is off by default)"));
+        warnings.push(format!(
+            "{single} unnamed single-pin net(s) left out (NetlistSinglePinNets is off by default)"
+        ));
     }
     let mut parts = Vec::new();
     let file = d.file_name();
@@ -122,7 +133,12 @@ pub fn design_of(d: &SchDoc, opts: &connect::NetOptions) -> Design {
         merge_part(&mut parts, c, &c.designator, &file);
     }
     parts.sort_by_key(|p| connect::natural_key(&p.designator));
-    Design { source: "schematic".into(), parts, nets, warnings }
+    Design {
+        source: "schematic".into(),
+        parts,
+        nets,
+        warnings,
+    }
 }
 
 /// One hit of a text search.
@@ -142,7 +158,11 @@ pub struct Hit {
 
 /// Search every text property of every record (case-insensitive substring). Values are
 /// compared as decoded (`%UTF8%` copies preferred over ANSI duplicates).
-pub fn find_text(records: &[(usize, String, i64, &altium_format::props::Props)], needle: &str, owner: impl Fn(usize) -> Option<String>) -> Vec<Hit> {
+pub fn find_text(
+    records: &[(usize, String, i64, &altium_format::props::Props)],
+    needle: &str,
+    owner: impl Fn(usize) -> Option<String>,
+) -> Vec<Hit> {
     let n = needle.to_lowercase();
     let mut out = Vec::new();
     for (index, stream, record, props) in records {
@@ -168,8 +188,11 @@ pub fn find_text(records: &[(usize, String, i64, &altium_format::props::Props)],
 
 impl SchDoc {
     pub fn find(&self, needle: &str) -> Vec<Hit> {
-        let recs: Vec<(usize, String, i64, &altium_format::props::Props)> =
-            self.records.iter().map(|r| (r.index, r.stream.to_owned(), r.record, &r.props)).collect();
+        let recs: Vec<(usize, String, i64, &altium_format::props::Props)> = self
+            .records
+            .iter()
+            .map(|r| (r.index, r.stream.to_owned(), r.record, &r.props))
+            .collect();
         find_text(&recs, needle, |i| self.owner_designator(i))
     }
 }

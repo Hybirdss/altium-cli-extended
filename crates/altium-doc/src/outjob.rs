@@ -47,13 +47,22 @@ pub struct Output {
 impl OutJob {
     pub fn load(path: &Path) -> Result<OutJob> {
         if DocKind::of(path) != DocKind::OutJob {
-            return Err(Error::new(ErrorCode::WrongFileType, format!("{} is not an .OutJob", path.display())));
+            return Err(Error::new(
+                ErrorCode::WrongFileType,
+                format!("{} is not an .OutJob", path.display()),
+            ));
         }
         let ini = Ini::load(path)?;
         if ini.section("OutputGroup1").is_none() {
-            return Err(Error::parse(format!("{} has no [OutputGroup1]", path.display())));
+            return Err(Error::parse(format!(
+                "{} has no [OutputGroup1]",
+                path.display()
+            )));
         }
-        Ok(OutJob { path: path.to_path_buf(), ini })
+        Ok(OutJob {
+            path: path.to_path_buf(),
+            ini,
+        })
     }
 
     fn group(&self) -> &altium_format::ini::Section {
@@ -62,30 +71,49 @@ impl OutJob {
 
     pub fn group_info(&self) -> IndexMap<String, String> {
         let g = self.group();
-        ["Name", "Description", "TargetOutputMedium", "VariantName", "VariantScope", "CurrentConfigurationName"]
-            .iter()
-            .map(|k| (k.to_string(), g.str(k)))
-            .collect()
+        [
+            "Name",
+            "Description",
+            "TargetOutputMedium",
+            "VariantName",
+            "VariantScope",
+            "CurrentConfigurationName",
+        ]
+        .iter()
+        .map(|k| (k.to_string(), g.str(k)))
+        .collect()
     }
 
     pub fn mediums(&self) -> Vec<Medium> {
         let g = self.group();
         let mut out = vec![];
         for i in 1.. {
-            let Some(name) = g.get(&format!("OutputMedium{i}")) else { break };
+            let Some(name) = g.get(&format!("OutputMedium{i}")) else {
+                break;
+            };
             let kind = g.str(&format!("OutputMedium{i}_Type"));
             // Settings keys end with the medium's (global) index, in either section.
             let mut settings = IndexMap::new();
             for section in ["GeneratedFilesSettings", "PublishSettings"] {
-                let Some(s) = self.ini.section(section) else { continue };
+                let Some(s) = self.ini.section(section) else {
+                    continue;
+                };
                 for e in &s.entries {
                     if let Some(base) = e.key.strip_suffix(&i.to_string())
-                        && base.chars().last().is_some_and(|c| !c.is_ascii_digit()) {
-                            settings.entry(base.to_owned()).or_insert_with(|| e.value.clone());
-                        }
+                        && base.chars().last().is_some_and(|c| !c.is_ascii_digit())
+                    {
+                        settings
+                            .entry(base.to_owned())
+                            .or_insert_with(|| e.value.clone());
+                    }
                 }
             }
-            out.push(Medium { index: i, name: name.to_owned(), kind, settings });
+            out.push(Medium {
+                index: i,
+                name: name.to_owned(),
+                kind,
+                settings,
+            });
         }
         out
     }
@@ -95,10 +123,14 @@ impl OutJob {
         let mediums = self.mediums();
         let mut out = vec![];
         for i in 1.. {
-            let Some(t) = g.get(&format!("OutputType{i}")) else { break };
+            let Some(t) = g.get(&format!("OutputType{i}")) else {
+                break;
+            };
             let enabled_for = mediums
                 .iter()
-                .filter(|m| g.get(&format!("OutputEnabled{i}_OutputMedium{}", m.index)) == Some("1"))
+                .filter(|m| {
+                    g.get(&format!("OutputEnabled{i}_OutputMedium{}", m.index)) == Some("1")
+                })
                 .map(|m| m.name.clone())
                 .collect();
             let config_items = g
@@ -133,14 +165,23 @@ impl OutJob {
     pub fn find_output(&self, sel: &str) -> Result<Vec<Output>> {
         let all = self.outputs();
         if let Ok(n) = sel.parse::<u32>()
-            && let Some(o) = all.iter().find(|o| o.index == n) {
-                return Ok(vec![o.clone()]);
-            }
-        let by_name: Vec<Output> = all.iter().filter(|o| o.name.eq_ignore_ascii_case(sel)).cloned().collect();
+            && let Some(o) = all.iter().find(|o| o.index == n)
+        {
+            return Ok(vec![o.clone()]);
+        }
+        let by_name: Vec<Output> = all
+            .iter()
+            .filter(|o| o.name.eq_ignore_ascii_case(sel))
+            .cloned()
+            .collect();
         if !by_name.is_empty() {
             return Ok(by_name);
         }
-        let by_type: Vec<Output> = all.iter().filter(|o| o.output_type.eq_ignore_ascii_case(sel)).cloned().collect();
+        let by_type: Vec<Output> = all
+            .iter()
+            .filter(|o| o.output_type.eq_ignore_ascii_case(sel))
+            .cloned()
+            .collect();
         if !by_type.is_empty() {
             return Ok(by_type);
         }
@@ -153,12 +194,21 @@ impl OutJob {
         let names: Vec<String> = ms.iter().map(|m| m.name.clone()).collect();
         ms.into_iter()
             .find(|m| m.name.eq_ignore_ascii_case(sel) || m.index.to_string() == sel)
-            .ok_or_else(|| Error::not_found(format!("no output medium {sel:?}")).hint(format!("mediums: {names:?}")))
+            .ok_or_else(|| {
+                Error::not_found(format!("no output medium {sel:?}"))
+                    .hint(format!("mediums: {names:?}"))
+            })
     }
 
     pub fn set_enabled(&mut self, output: u32, medium: u32, on: bool) {
-        let g = self.ini.section_mut("OutputGroup1").expect("checked in load");
-        g.set(&format!("OutputEnabled{output}_OutputMedium{medium}"), if on { "1" } else { "0" });
+        let g = self
+            .ini
+            .section_mut("OutputGroup1")
+            .expect("checked in load");
+        g.set(
+            &format!("OutputEnabled{output}_OutputMedium{medium}"),
+            if on { "1" } else { "0" },
+        );
     }
 }
 
@@ -240,10 +290,20 @@ impl OutputKind {
             "3d-pdf" | "pcb-3d" => "pcb-3d-pdf",
             other => other,
         };
-        OUTPUT_KINDS.iter().copied().find(|o| o.name() == alias).ok_or_else(|| {
-            Error::new(ErrorCode::Usage, format!("unknown output kind {s:?}"))
-                .hint(format!("kinds: {}", OUTPUT_KINDS.iter().map(|o| o.name()).collect::<Vec<_>>().join(", ")))
-        })
+        OUTPUT_KINDS
+            .iter()
+            .copied()
+            .find(|o| o.name() == alias)
+            .ok_or_else(|| {
+                Error::new(ErrorCode::Usage, format!("unknown output kind {s:?}")).hint(format!(
+                    "kinds: {}",
+                    OUTPUT_KINDS
+                        .iter()
+                        .map(|o| o.name())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))
+            })
     }
 
     /// Altium's `OutputType` name.
@@ -265,7 +325,11 @@ impl OutputKind {
 
     pub fn category(self) -> &'static str {
         match self {
-            OutputKind::Gerber | OutputKind::GerberX2 | OutputKind::Drill | OutputKind::Odb | OutputKind::Ipc2581 => "Fabrication",
+            OutputKind::Gerber
+            | OutputKind::GerberX2
+            | OutputKind::Drill
+            | OutputKind::Odb
+            | OutputKind::Ipc2581 => "Fabrication",
             OutputKind::PickPlace => "Assembly",
             OutputKind::Bom => "Report",
             OutputKind::SchPdf | OutputKind::PcbPdf | OutputKind::Pcb3dPdf => "Documentation",
@@ -275,7 +339,10 @@ impl OutputKind {
 
     /// Printed outputs go to a PDF publisher medium; the rest to a generated-files folder.
     pub fn is_pdf(self) -> bool {
-        matches!(self, OutputKind::SchPdf | OutputKind::PcbPdf | OutputKind::Pcb3dPdf)
+        matches!(
+            self,
+            OutputKind::SchPdf | OutputKind::PcbPdf | OutputKind::Pcb3dPdf
+        )
     }
 
     /// Needs a PCB document (everything except the schematic print and the BOM).
@@ -398,7 +465,11 @@ impl NewJob {
                 files_n += 1;
                 (files_n, 0)
             };
-            let doc = if o.document.is_empty() && o.kind == OutputKind::SchPdf { "[Project Physical Documents]".to_owned() } else { o.document.clone() };
+            let doc = if o.document.is_empty() && o.kind == OutputKind::SchPdf {
+                "[Project Physical Documents]".to_owned()
+            } else {
+                o.document.clone()
+            };
             l.push(format!("OutputType{k}={}", o.kind.output_type()));
             l.push(format!("OutputName{k}={}", o.kind.name()));
             l.push(format!("OutputCategory{k}={}", o.kind.category()));
@@ -412,7 +483,11 @@ impl NewJob {
                 l.push(format!("PageOptions{k}={po}"));
             }
             for (j, c) in o.kind.config().iter().enumerate() {
-                l.push(format!("Configuration{k}_Name{}=OutputConfigurationParameter{}", j + 1, j + 1));
+                l.push(format!(
+                    "Configuration{k}_Name{}=OutputConfigurationParameter{}",
+                    j + 1,
+                    j + 1
+                ));
                 l.push(format!("Configuration{k}_Item{}={c}", j + 1));
             }
         }
@@ -497,9 +572,18 @@ mod tests {
     fn new_job_round_trips_through_the_reader() {
         let job = NewJob {
             outputs: vec![
-                NewOutput { kind: OutputKind::Gerber, document: "Board.PcbDoc".into() },
-                NewOutput { kind: OutputKind::Drill, document: "Board.PcbDoc".into() },
-                NewOutput { kind: OutputKind::SchPdf, document: String::new() },
+                NewOutput {
+                    kind: OutputKind::Gerber,
+                    document: "Board.PcbDoc".into(),
+                },
+                NewOutput {
+                    kind: OutputKind::Drill,
+                    document: "Board.PcbDoc".into(),
+                },
+                NewOutput {
+                    kind: OutputKind::SchPdf,
+                    document: String::new(),
+                },
             ],
             out_dir: r"C:\w\Project Outputs\altium-cli-extended".into(),
             pdf_name: "docs.pdf".into(),
@@ -518,7 +602,11 @@ mod tests {
         assert_eq!(outs[2].enabled_for, vec![PDF_MEDIUM.to_owned()]);
         assert_eq!(outs[2].document, "[Project Physical Documents]");
         assert_eq!(j.group_info()["VariantName"], "Lite");
-        assert!(j.output_config(1)[0].get("Plot.Set").is_some_and(|s| s.contains("16842751~1")));
+        assert!(
+            j.output_config(1)[0]
+                .get("Plot.Set")
+                .is_some_and(|s| s.contains("16842751~1"))
+        );
         assert_eq!(job.mediums(), vec![FILES_MEDIUM, PDF_MEDIUM]);
         let _ = std::fs::remove_dir_all(dir);
     }

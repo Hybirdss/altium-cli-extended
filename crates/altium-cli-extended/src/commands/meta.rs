@@ -6,11 +6,11 @@ use clap::{CommandFactory, Subcommand};
 use serde_json::{Value, json};
 
 use crate::ctx::Ctx;
+use crate::meta::{Backend::*, CmdMeta, Effect::*, m};
+use crate::output::{Out, list, list_with};
 use altium_core::error::{Error, ErrorCode, Result};
 use altium_format::DocKind;
 use altium_format::cfbx::Compound;
-use crate::meta::{Backend::*, CmdMeta, Effect::*, m};
-use crate::output::{Out, list, list_with};
 
 #[derive(Subcommand, Debug)]
 pub enum MetaCmd {
@@ -55,36 +55,98 @@ pub enum MetaCmd {
         quick: bool,
     },
     /// Identify any Altium file and summarise it (dispatches to the right `info` command).
-    Inspect {
-        file: PathBuf,
-    },
+    Inspect { file: PathBuf },
 }
 
 pub const META: &[CmdMeta] = &[
-    m("restore", Native, Write, "{file, from, backup, pre_restore, current:{bytes,modified_unix_ms}, restore_source:{bytes,modified_unix_ms}, changed, verified:{reparsed,read_back}, bytes}",
-      "ace restore Board.SchDoc --from first --dry-run",
-      "first means the oldest preserved .bak, not the last edit. Re-parses it before replacing one design file. Saves current bytes to <file>.pre-restore even with --no-backup; an existing recovery copy blocks replacement. --dry-run reports both sizes and modification times without writing. The .bak is kept; recovery covers one file."),
-    m("commands", Meta, Read,
-      "{count, items:[{path, about, backend, effect, returns, example, notes, args:[...]}]}",
-      "ace commands pcb --brief",
-      "Call this first. backend=native needs nothing installed; backend=designer needs Altium Designer on this Windows machine, a Windows machine over SSH, or Wine (see `ace doctor`)."),
-    m("describe", Meta, Read, "{path, about, backend, effect, returns, example, notes, args, flags, global_flags, supports_dry_run}",
-      "ace describe designer drc", ""),
-    m("skill", Meta, Read, "{name, file, markdown, files}", "ace skill --file commands",
-      "SKILL.md is the short guide (when to use, rules, workflows); COMMANDS.md is the full reference. Both are generated from this binary."),
-    m("skill show", Meta, Read, "{name, file, markdown, files}", "ace skill show --raw", "--raw or --text prints Markdown directly; default remains a JSON envelope."),
-    m("skill install", Meta, Control, "{skill, version, count, items:[{target, path, written, unchanged, replaced_symlink}]}",
-      "ace skill install --target claude --target codex",
-      "Copies SKILL.md + COMMANDS.md to <home>/.agents|.claude|.codex|.gemini/skills/altium-cli-extended (default: .agents plus every agent home that exists), or DIR/altium-cli-extended with --dir. Works the same on Windows, macOS and Linux; honours --dry-run."),
-    m("skill status", Meta, Read, "{skill, version, count, items:[{target, path, installed, files, up_to_date, symlink}]}",
-      "ace skill status", "up_to_date=false: the copy was written by another version; rerun `skill install`."),
-    m("skill uninstall", Meta, Control, "{skill, count, items:[{target, path, removed}]}",
-      "ace skill uninstall --target all", "Removes only SKILL.md/COMMANDS.md (and the directory when it is then empty)."),
-    m("errors", Meta, Read, "{count, items:[{code, exit_code, category, meaning}]}", "ace errors", ""),
-    m("doctor", Meta, Read, "{native, designer:{host, altium, bridge, ...}, ready:{native, designer}}",
-      "ace doctor --quick", "Use --quick for offline/native tasks (no host contact). Full doctor probes Designer; run when a designer command fails with DESIGNER_UNAVAILABLE. Native commands never need anything installed."),
-    m("inspect", Native, Read, "same as the matching `<kind> info` command plus {kind}",
-      "ace inspect Board.PcbDoc", "Use when you do not know what a file is."),
+    m(
+        "restore",
+        Native,
+        Write,
+        "{file, from, backup, pre_restore, current:{bytes,modified_unix_ms}, restore_source:{bytes,modified_unix_ms}, changed, verified:{reparsed,read_back}, bytes}",
+        "ace restore Board.SchDoc --from first --dry-run",
+        "first means the oldest preserved .bak, not the last edit. Re-parses it before replacing one design file. Saves current bytes to <file>.pre-restore even with --no-backup; an existing recovery copy blocks replacement. --dry-run reports both sizes and modification times without writing. The .bak is kept; recovery covers one file.",
+    ),
+    m(
+        "commands",
+        Meta,
+        Read,
+        "{count, items:[{path, about, backend, effect, returns, example, notes, args:[...]}]}",
+        "ace commands pcb --brief",
+        "Call this first. backend=native needs nothing installed; backend=designer needs Altium Designer on this Windows machine, a Windows machine over SSH, or Wine (see `ace doctor`).",
+    ),
+    m(
+        "describe",
+        Meta,
+        Read,
+        "{path, about, backend, effect, returns, example, notes, args, flags, global_flags, supports_dry_run}",
+        "ace describe designer drc",
+        "",
+    ),
+    m(
+        "skill",
+        Meta,
+        Read,
+        "{name, file, markdown, files}",
+        "ace skill --file commands",
+        "SKILL.md is the short guide (when to use, rules, workflows); COMMANDS.md is the full reference. Both are generated from this binary.",
+    ),
+    m(
+        "skill show",
+        Meta,
+        Read,
+        "{name, file, markdown, files}",
+        "ace skill show --raw",
+        "--raw or --text prints Markdown directly; default remains a JSON envelope.",
+    ),
+    m(
+        "skill install",
+        Meta,
+        Control,
+        "{skill, version, count, items:[{target, path, written, unchanged, replaced_symlink}]}",
+        "ace skill install --target claude --target codex",
+        "Copies SKILL.md + COMMANDS.md to <home>/.agents|.claude|.codex|.gemini/skills/altium-cli-extended (default: .agents plus every agent home that exists), or DIR/altium-cli-extended with --dir. Works the same on Windows, macOS and Linux; honours --dry-run.",
+    ),
+    m(
+        "skill status",
+        Meta,
+        Read,
+        "{skill, version, count, items:[{target, path, installed, files, up_to_date, symlink}]}",
+        "ace skill status",
+        "up_to_date=false: the copy was written by another version; rerun `skill install`.",
+    ),
+    m(
+        "skill uninstall",
+        Meta,
+        Control,
+        "{skill, count, items:[{target, path, removed}]}",
+        "ace skill uninstall --target all",
+        "Removes only SKILL.md/COMMANDS.md (and the directory when it is then empty).",
+    ),
+    m(
+        "errors",
+        Meta,
+        Read,
+        "{count, items:[{code, exit_code, category, meaning}]}",
+        "ace errors",
+        "",
+    ),
+    m(
+        "doctor",
+        Meta,
+        Read,
+        "{native, designer:{host, altium, bridge, ...}, ready:{native, designer}}",
+        "ace doctor --quick",
+        "Use --quick for offline/native tasks (no host contact). Full doctor probes Designer; run when a designer command fails with DESIGNER_UNAVAILABLE. Native commands never need anything installed.",
+    ),
+    m(
+        "inspect",
+        Native,
+        Read,
+        "same as the matching `<kind> info` command plus {kind}",
+        "ace inspect Board.PcbDoc",
+        "Use when you do not know what a file is.",
+    ),
 ];
 
 /// Space-joined paths of every leaf command. A command that has subcommands but also runs on
@@ -96,7 +158,11 @@ pub fn leaf_paths(cmd: &clap::Command) -> Vec<String> {
             if sub.get_name() == "help" {
                 continue;
             }
-            let p = if prefix.is_empty() { sub.get_name().to_owned() } else { format!("{prefix} {}", sub.get_name()) };
+            let p = if prefix.is_empty() {
+                sub.get_name().to_owned()
+            } else {
+                format!("{prefix} {}", sub.get_name())
+            };
             if sub.has_subcommands() {
                 if sub.is_args_conflicts_with_subcommands_set() {
                     out.push(p.clone());
@@ -128,7 +194,9 @@ fn argument_help(name: &str) -> String {
         "pcb" => "PCB document (.PcbDoc) path".into(),
         "sch" => "Schematic document (.SchDoc) path".into(),
         "outjob" => "Output job (.OutJob) path".into(),
-        "designator" | "component" => "Component designator from the component list, e.g. R5; quote 'U?'".into(),
+        "designator" | "component" => {
+            "Component designator from the component list, e.g. R5; quote 'U?'".into()
+        }
         "name" => "Exact object name from the corresponding list command".into(),
         "value" => "New field/parameter value; include units for lengths (e.g. 0.2mm)".into(),
         "field" => "Field name to change; see notes for supported fields".into(),
@@ -141,7 +209,10 @@ fn argument_help(name: &str) -> String {
         "section" => "INI section name from settings".into(),
         "variant" => "Assembly variant name, unique ID or 1-based index".into(),
         "new" => "New object name/designator".into(),
-        _ => format!("{} for this operation; see the example and notes", name.replace('_', " ")),
+        _ => format!(
+            "{} for this operation; see the example and notes",
+            name.replace('_', " ")
+        ),
     }
 }
 
@@ -199,7 +270,12 @@ pub fn describe_json(root: &clap::Command, path: &str, with_args: bool) -> Optio
         v["args"] = json!(args_json(c));
         v["flags"] = json!(global_flags(root));
         v["global_flags"] = json!(global_flags(root));
-        v["supports_dry_run"] = json!(meta.as_ref().is_some_and(|m| matches!(m.effect, Write | Export | Control) || matches!(m.path, "bom" | "netlist")));
+        v["supports_dry_run"] =
+            json!(
+                meta.as_ref()
+                    .is_some_and(|m| matches!(m.effect, Write | Export | Control)
+                        || matches!(m.path, "bom" | "netlist"))
+            );
     }
     Some(v)
 }
@@ -214,7 +290,11 @@ pub fn run(c: MetaCmd, ctx: &Ctx) -> Result<Out> {
         MetaCmd::Commands { group, brief } => {
             let items: Vec<Value> = leaf_paths(&root)
                 .into_iter()
-                .filter(|p| group.as_deref().is_none_or(|g| p == g || p.starts_with(&format!("{g} "))))
+                .filter(|p| {
+                    group
+                        .as_deref()
+                        .is_none_or(|g| p == g || p.starts_with(&format!("{g} ")))
+                })
                 .filter_map(|p| {
                     if brief {
                         let c = find_cmd(&root, &p)?;
@@ -223,7 +303,9 @@ pub fn run(c: MetaCmd, ctx: &Ctx) -> Result<Out> {
                             let prefix: String = about.chars().take(46).collect();
                             let end = prefix.rfind(char::is_whitespace).unwrap_or(0);
                             format!("{}...", prefix[..end].trim_end())
-                        } else { about };
+                        } else {
+                            about
+                        };
                         Some(json!({"path":p,"about":short}))
                     } else {
                         let mut full = describe_json(&root, &p, true)?;
@@ -238,7 +320,11 @@ pub fn run(c: MetaCmd, ctx: &Ctx) -> Result<Out> {
                 return Err(Error::not_found(format!("no commands under {:?}", group.unwrap_or_default()))
                     .hint("groups: project outjob sch schlib pcb pcblib bom netlist check diff designer raw"));
             }
-            Out::new(if brief { list(&items)? } else { list_with(&items, json!({"global_flags": global_flags(&root)}))? })
+            Out::new(if brief {
+                list(&items)?
+            } else {
+                list_with(&items, json!({"global_flags": global_flags(&root)}))?
+            })
         }
         MetaCmd::Describe { path } => {
             let p = path.join(" ");
@@ -246,8 +332,10 @@ pub fn run(c: MetaCmd, ctx: &Ctx) -> Result<Out> {
                 Error::not_found(format!("no command {p:?}")).hint("run `ace commands --brief`")
             })?;
             if find_cmd(&root, &p).is_some_and(|c| c.has_subcommands()) {
-                let subs: Vec<String> =
-                    leaf_paths(&root).into_iter().filter(|l| l.starts_with(&format!("{p} "))).collect();
+                let subs: Vec<String> = leaf_paths(&root)
+                    .into_iter()
+                    .filter(|l| l.starts_with(&format!("{p} ")))
+                    .collect();
                 v["group"] = json!(true);
                 v["subcommands"] = json!(subs);
                 return Out::new(v);
@@ -255,38 +343,62 @@ pub fn run(c: MetaCmd, ctx: &Ctx) -> Result<Out> {
             Out::new(v)
         }
         MetaCmd::Skill { action: None, file } => crate::commands::skill::run_print(file, &root),
-        MetaCmd::Skill { action: Some(a), .. } => crate::commands::skill::run(a, &root, ctx),
+        MetaCmd::Skill {
+            action: Some(a), ..
+        } => crate::commands::skill::run(a, &root, ctx),
         MetaCmd::Restore { file, from } => {
             let path = ctx.input(&file)?;
-            let mut name = path.as_os_str().to_os_string(); name.push(".bak");
+            let mut name = path.as_os_str().to_os_string();
+            name.push(".bak");
             let backup = PathBuf::from(name);
-            let bytes = std::fs::read(&backup).map_err(|e| Error::from(e)
-                .hint(format!("no usable backup at {}; use version control or a project copy", backup.display())))?;
-            altium_doc::validate::bytes(&path, &bytes).map_err(|e| Error::new(ErrorCode::Unsafe, format!("backup validation failed: {}", e.message))
-                .hint("current file was kept; recover a valid backup or use version control"))?;
+            let bytes = std::fs::read(&backup).map_err(|e| {
+                Error::from(e).hint(format!(
+                    "no usable backup at {}; use version control or a project copy",
+                    backup.display()
+                ))
+            })?;
+            altium_doc::validate::bytes(&path, &bytes).map_err(|e| {
+                Error::new(
+                    ErrorCode::Unsafe,
+                    format!("backup validation failed: {}", e.message),
+                )
+                .hint("current file was kept; recover a valid backup or use version control")
+            })?;
             let current = std::fs::read(&path)?;
             let state = |file: &Path, len: usize| -> Result<Value> {
-                let modified = std::fs::metadata(file)?.modified()?.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis());
+                let modified = std::fs::metadata(file)?
+                    .modified()?
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_millis());
                 Ok(json!({"bytes":len,"modified_unix_ms":modified}))
             };
             let current_state = state(&path, current.len())?;
             let backup_state = state(&backup, bytes.len())?;
             let changed = current != bytes;
             let pre_restore = if changed {
-                let mut name = path.as_os_str().to_os_string(); name.push(".pre-restore");
+                let mut name = path.as_os_str().to_os_string();
+                name.push(".pre-restore");
                 let recovery = PathBuf::from(name);
                 ctx.preserve_file(&recovery, &current)?;
                 ctx.write_file(&path, &bytes)?;
                 Some(recovery)
-            } else { None };
+            } else {
+                None
+            };
             let read_back = !ctx.dry_run && std::fs::read(&path)? == bytes;
             if !ctx.dry_run && !read_back {
-                return Err(Error::new(ErrorCode::Unsafe, "restored file differs from validated backup")
-                    .hint("keep the .bak and inspect disk permissions or concurrent writers"));
+                return Err(Error::new(
+                    ErrorCode::Unsafe,
+                    "restored file differs from validated backup",
+                )
+                .hint("keep the .bak and inspect disk permissions or concurrent writers"));
             }
-            Out::new(json!({"file":path,"from":from,"backup":backup,"pre_restore":pre_restore,
+            Out::new(
+                json!({"file":path,"from":from,"backup":backup,"pre_restore":pre_restore,
                 "current":current_state,"restore_source":backup_state,"changed":changed,"bytes":bytes.len(),
-                "verified":{"reparsed":true,"read_back":read_back}}))
+                "verified":{"reparsed":true,"read_back":read_back}}),
+            )
         }
         MetaCmd::Errors => {
             let items: Vec<Value> = ErrorCode::all()
@@ -301,7 +413,10 @@ pub fn run(c: MetaCmd, ctx: &Ctx) -> Result<Out> {
             "ready":{"native":true,"designer":null}})),
         MetaCmd::Doctor { quick: false } => {
             let designer = altium_designer::doctor();
-            let ready_designer = designer.get("ready").and_then(Value::as_bool).unwrap_or(false);
+            let ready_designer = designer
+                .get("ready")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             Out::new(json!({
                 "native": {"ok": true, "formats": ["PrjPcb", "OutJob", "SchDoc", "SchLib", "PcbDoc", "PcbLib", "IntLib (raw)"]},
                 "designer": designer,
@@ -320,10 +435,14 @@ pub fn error_meaning(c: ErrorCode) -> &'static str {
         ErrorCode::Parse => "file is the right type but could not be decoded",
         ErrorCode::NotFound => "named object (designator, net, stream, symbol...) not in the file",
         ErrorCode::Ambiguous => "query matched several objects; narrow it",
-        ErrorCode::Unsafe => "write refused to protect the design (locked, open in Altium, unverifiable)",
+        ErrorCode::Unsafe => {
+            "write refused to protect the design (locked, open in Altium, unverifiable)"
+        }
         ErrorCode::GateFailed => "command succeeded but an explicit gate matched; see data.gate",
         ErrorCode::UnsupportedNative => "operation requires Altium Designer; follow the hint",
-        ErrorCode::DesignerUnavailable => "Altium Designer host (local, SSH or Wine) or its bridge not set up; run `ace doctor`",
+        ErrorCode::DesignerUnavailable => {
+            "Altium Designer host (local, SSH or Wine) or its bridge not set up; run `ace doctor`"
+        }
         ErrorCode::DesignerFailed => "Altium ran but the operation failed; see error.details",
         ErrorCode::Timeout => "Altium did not answer in time; it may be busy or stuck on a dialog",
         ErrorCode::Io => "file system error",
@@ -350,7 +469,9 @@ pub fn inspect(file: &Path, ctx: &Ctx) -> Result<Out> {
                     e
                 }
             })?;
-            Out::new(json!({"streams": cf.streams().len(), "note": "no dedicated decoder; use `ace raw streams`"}))?
+            Out::new(
+                json!({"streams": cf.streams().len(), "note": "no dedicated decoder; use `ace raw streams`"}),
+            )?
         }
     };
     if let Value::Object(o) = &mut out.data {
@@ -358,4 +479,3 @@ pub fn inspect(file: &Path, ctx: &Ctx) -> Result<Out> {
     }
     Ok(out)
 }
-

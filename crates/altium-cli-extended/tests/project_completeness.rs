@@ -6,8 +6,11 @@ fn copy_dir(src: &Path, dst: &Path) {
     std::fs::create_dir_all(dst).unwrap();
     for e in std::fs::read_dir(src).unwrap().flatten() {
         let target = dst.join(e.file_name());
-        if e.path().is_dir() { copy_dir(&e.path(), &target); }
-        else { std::fs::copy(e.path(), target).unwrap(); }
+        if e.path().is_dir() {
+            copy_dir(&e.path(), &target);
+        } else {
+            std::fs::copy(e.path(), target).unwrap();
+        }
     }
 }
 
@@ -41,13 +44,30 @@ fn bare_relative_project_keeps_sibling_sheets_and_reports_missing_coverage() {
     let (_, partial) = run(&["bom", &s(&file)]);
     assert_eq!(partial["data"]["incomplete"], true);
     assert_eq!(partial["data"]["documents_found"], 1);
-    assert!(partial["warnings"].as_array().unwrap().iter().any(|w| w.as_str().unwrap().contains("10 of 11")));
+    assert!(
+        partial["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|w| w.as_str().unwrap().contains("10 of 11"))
+    );
     let d = ok(&["check", &s(&file)]);
     assert_eq!(d["by_code"]["incomplete-project"], 1);
     assert!(d["by_code"].get("missing-in-schematic").is_none());
     assert!(d["by_code"].get("missing-in-pcb").is_none());
     assert_eq!(d["passed"], false);
-    assert_eq!(run(&["check", &s(&file), "--only", "unannotated", "--fail-on", "error"]).0, 9);
+    assert_eq!(
+        run(&[
+            "check",
+            &s(&file),
+            "--only",
+            "unannotated",
+            "--fail-on",
+            "error"
+        ])
+        .0,
+        9
+    );
     let (_, diff) = run(&["diff", &s(&file), &s(&file)]);
     assert_eq!(diff["data"]["incomplete"], true);
 }
@@ -60,11 +80,20 @@ fn directory_inputs_and_macos_junk_are_unambiguous() {
     std::fs::write(dir.join("__MACOSX/._A.PrjPcb"), b"junk").unwrap();
     assert_eq!(ok(&["inspect", &s(&dir)])["kind"], "project");
     assert_eq!(ok(&["project", "find", &s(&dir)])["count"], 1);
-    assert_eq!(ok(&["project", "find", &s(&dir), "--include-hidden"])["count"], 2);
+    assert_eq!(
+        ok(&["project", "find", &s(&dir), "--include-hidden"])["count"],
+        2
+    );
     std::fs::write(dir.join("B.PrjPcb"), b"[Design]\n").unwrap();
     for cmd in ["inspect", "bom", "netlist", "check"] {
         let v = err(&[cmd, &s(&dir)], "AMBIGUOUS");
-        assert_eq!(v["error"]["details"]["candidates"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            v["error"]["details"]["candidates"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
     }
 }
 

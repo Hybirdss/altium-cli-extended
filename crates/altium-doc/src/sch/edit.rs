@@ -68,11 +68,27 @@ pub struct Editor<'a> {
 
 impl<'a> Editor<'a> {
     pub fn new(doc: &'a SchDoc) -> Result<Editor<'a>> {
-        if doc.records.iter().any(|r| r.stream == "FileHeader" && r.binary) {
-            return Err(unsafe_err("the sheet has binary FileHeader records; refusing to edit"));
+        if doc
+            .records
+            .iter()
+            .any(|r| r.stream == "FileHeader" && r.binary)
+        {
+            return Err(unsafe_err(
+                "the sheet has binary FileHeader records; refusing to edit",
+            ));
         }
-        let uids = doc.records.iter().filter_map(|r| r.props.raw("UNIQUEID").map(str::to_owned)).collect();
-        Ok(Editor { doc, recs: doc.fh_records.clone(), removed: vec![], changes: vec![], uids })
+        let uids = doc
+            .records
+            .iter()
+            .filter_map(|r| r.props.raw("UNIQUEID").map(str::to_owned))
+            .collect();
+        Ok(Editor {
+            doc,
+            recs: doc.fh_records.clone(),
+            removed: vec![],
+            changes: vec![],
+            uids,
+        })
     }
 
     fn record(&self, index: usize) -> Result<&SchRecord> {
@@ -89,7 +105,13 @@ impl<'a> Editor<'a> {
     }
 
     /// Set text `key` of record `index` (keeps the `%UTF8%` copy in sync).
-    pub fn set_prop(&mut self, index: usize, key: &str, value: &str, designator: Option<String>) -> Result<bool> {
+    pub fn set_prop(
+        &mut self,
+        index: usize,
+        key: &str,
+        value: &str,
+        designator: Option<String>,
+    ) -> Result<bool> {
         self.record(index)?;
         let before = self.props(index).get(key);
         if before.as_deref() == Some(value) {
@@ -97,7 +119,9 @@ impl<'a> Editor<'a> {
         }
         let data = &mut self.recs[index + 1].data;
         if find_field(data, key).is_none() && fields(data).is_empty() {
-            return Err(unsafe_err(format!("record {index} has no |KEY=VALUE| fields")));
+            return Err(unsafe_err(format!(
+                "record {index} has no |KEY=VALUE| fields"
+            )));
         }
         set_text_field(data, key, value)?;
         self.changes.push(Change {
@@ -113,7 +137,8 @@ impl<'a> Editor<'a> {
 
     /// A fresh `UNIQUEID` (eight letters A–Y, unique in this document).
     pub fn new_unique_id(&mut self) -> String {
-        let mut seed: u64 = 0x9E37_79B9_7F4A_7C15 ^ (self.uids.len() as u64).wrapping_mul(0x1000_0000_01B3);
+        let mut seed: u64 =
+            0x9E37_79B9_7F4A_7C15 ^ (self.uids.len() as u64).wrapping_mul(0x1000_0000_01B3);
         for b in self.doc.path.to_string_lossy().bytes() {
             seed = seed.wrapping_mul(0x100_0000_01B3) ^ b as u64;
         }
@@ -132,7 +157,13 @@ impl<'a> Editor<'a> {
     }
 
     /// Append a new FileHeader record built from `pairs`; returns its index.
-    pub fn append(&mut self, pairs: &[(String, String)], designator: Option<String>, key: &str, value: &str) -> Result<usize> {
+    pub fn append(
+        &mut self,
+        pairs: &[(String, String)],
+        designator: Option<String>,
+        key: &str,
+        value: &str,
+    ) -> Result<usize> {
         let index = self.recs.len() - 1;
         self.recs.push(build_record(pairs)?);
         self.changes.push(Change {
@@ -149,11 +180,20 @@ impl<'a> Editor<'a> {
     /// Remove a record that nothing owns.
     pub fn remove(&mut self, index: usize, designator: Option<String>, key: &str) -> Result<()> {
         let r = self.record(index)?;
-        if self.doc.records.iter().any(|o| o.stream == "FileHeader" && o.owner() == Some(index)) {
-            return Err(unsafe_err(format!("record {index} owns other records; refusing to remove it")));
+        if self
+            .doc
+            .records
+            .iter()
+            .any(|o| o.stream == "FileHeader" && o.owner() == Some(index))
+        {
+            return Err(unsafe_err(format!(
+                "record {index} owns other records; refusing to remove it"
+            )));
         }
         if self.doc.records.iter().any(|o| o.stream == "Additional") {
-            return Err(unsafe_err("the sheet has Additional-stream records that may reference FileHeader indices; refusing to renumber"));
+            return Err(unsafe_err(
+                "the sheet has Additional-stream records that may reference FileHeader indices; refusing to renumber",
+            ));
         }
         if self.removed.contains(&index) {
             return Ok(());
@@ -161,7 +201,14 @@ impl<'a> Editor<'a> {
         let before = r.props.get("TEXT");
         self.removed.push(index);
         self.removed.sort_unstable();
-        self.changes.push(Change { index, action: "remove".into(), designator, key: key.into(), before, after: None });
+        self.changes.push(Change {
+            index,
+            action: "remove".into(),
+            designator,
+            key: key.into(),
+            before,
+            after: None,
+        });
         Ok(())
     }
 
@@ -200,8 +247,18 @@ impl<'a> Editor<'a> {
 
 /// Fields for a new parameter: copy the visual conventions of an existing hidden sibling
 /// parameter (position, colour, font), else of any parameter in the sheet.
-pub fn new_parameter_fields(doc: &SchDoc, owner: Option<usize>, name: &str, value: &str, uid: &str) -> Vec<(String, String)> {
-    let siblings: Vec<&SchRecord> = doc.records.iter().filter(|r| r.record == 41 && r.owner() == owner).collect();
+pub fn new_parameter_fields(
+    doc: &SchDoc,
+    owner: Option<usize>,
+    name: &str,
+    value: &str,
+    uid: &str,
+) -> Vec<(String, String)> {
+    let siblings: Vec<&SchRecord> = doc
+        .records
+        .iter()
+        .filter(|r| r.record == 41 && r.owner() == owner)
+        .collect();
     let template = siblings
         .iter()
         .rev()
@@ -213,12 +270,24 @@ pub fn new_parameter_fields(doc: &SchDoc, owner: Option<usize>, name: &str, valu
     if let Some(o) = owner {
         p.push(("OWNERINDEX".into(), o.to_string()));
     }
-    if let Some(next) = siblings.iter().filter_map(|r| r.props.int("INDEXINSHEET")).filter(|&i| i >= 0).max() {
+    if let Some(next) = siblings
+        .iter()
+        .filter_map(|r| r.props.int("INDEXINSHEET"))
+        .filter(|&i| i >= 0)
+        .max()
+    {
         p.push(("INDEXINSHEET".into(), (next + 1).to_string()));
     }
     p.push(("OWNERPARTID".into(), "-1".into()));
     if let Some(t) = template {
-        for k in ["LOCATION.X", "LOCATION.X_FRAC", "LOCATION.Y", "LOCATION.Y_FRAC", "COLOR", "FONTID"] {
+        for k in [
+            "LOCATION.X",
+            "LOCATION.X_FRAC",
+            "LOCATION.Y",
+            "LOCATION.Y_FRAC",
+            "COLOR",
+            "FONTID",
+        ] {
             if let Some(v) = t.props.raw(k) {
                 p.push((k.into(), v.into()));
             }
@@ -239,9 +308,16 @@ pub fn new_parameter_fields(doc: &SchDoc, owner: Option<usize>, name: &str, valu
 
 /// Set (or create) a parameter on every instance of a component. `designator` matches the
 /// base designator (all sub-parts) or one sub-part (`U1A`).
-pub fn set_param(doc: &SchDoc, designator: &str, name: &str, value: &str) -> Result<(Vec<u8>, Vec<Change>)> {
+pub fn set_param(
+    doc: &SchDoc,
+    designator: &str,
+    name: &str,
+    value: &str,
+) -> Result<(Vec<u8>, Vec<Change>)> {
     if name.trim().is_empty() || name.contains(['|', '=']) || value.contains('|') {
-        return Err(Error::usage("parameter names cannot be empty or contain | or =, values cannot contain |"));
+        return Err(Error::usage(
+            "parameter names cannot be empty or contain | or =, values cannot contain |",
+        ));
     }
     let comps = doc.find_components(designator)?;
     let mut ed = Editor::new(doc)?;
@@ -261,16 +337,29 @@ pub fn set_param(doc: &SchDoc, designator: &str, name: &str, value: &str) -> Res
     Ok((bytes, changes))
 }
 
-pub fn remove_param(doc: &SchDoc, designator: &str, name: &str) -> Result<(Vec<u8>, Vec<Change>, usize)> {
+pub fn remove_param(
+    doc: &SchDoc,
+    designator: &str,
+    name: &str,
+) -> Result<(Vec<u8>, Vec<Change>, usize)> {
     let comps = doc.find_components(designator)?;
-    let hits: Vec<(usize, String)> =
-        comps.iter().filter_map(|c| c.param(name).map(|p| (p.index, c.display_designator.clone()))).collect();
+    let hits: Vec<(usize, String)> = comps
+        .iter()
+        .filter_map(|c| {
+            c.param(name)
+                .map(|p| (p.index, c.display_designator.clone()))
+        })
+        .collect();
     if hits.is_empty() {
         let names: Vec<String> = comps[0].parameters.iter().map(|p| p.name.clone()).collect();
-        return Err(Error::not_found(format!("{designator} has no parameter {name:?}")).hint(format!("parameters: {}", names.join(", "))));
+        return Err(
+            Error::not_found(format!("{designator} has no parameter {name:?}"))
+                .hint(format!("parameters: {}", names.join(", "))),
+        );
     }
     if name.eq_ignore_ascii_case("Comment") {
-        return Err(unsafe_err("refusing to remove the Comment parameter").hint("use `ace sch set-comment` to change it"));
+        return Err(unsafe_err("refusing to remove the Comment parameter")
+            .hint("use `ace sch set-comment` to change it"));
     }
     let mut ed = Editor::new(doc)?;
     for (idx, des) in hits {
@@ -285,7 +374,11 @@ pub fn set_comment(doc: &SchDoc, designator: &str, value: &str) -> Result<(Vec<u
 }
 
 /// Set the current footprint model's name (and the matching data-file entity).
-pub fn set_footprint(doc: &SchDoc, designator: &str, footprint: &str) -> Result<(Vec<u8>, Vec<Change>)> {
+pub fn set_footprint(
+    doc: &SchDoc,
+    designator: &str,
+    footprint: &str,
+) -> Result<(Vec<u8>, Vec<Change>)> {
     if footprint.trim().is_empty() || footprint.contains('|') {
         return Err(Error::usage("footprint names cannot be empty or contain |"));
     }
@@ -297,7 +390,12 @@ pub fn set_footprint(doc: &SchDoc, designator: &str, footprint: &str) -> Result<
                 .hint("adding a model creates implementation records; do it in Altium (`ace designer ...`)"));
         };
         let old = m.name.clone();
-        ed.set_prop(m.index, "MODELNAME", footprint, Some(c.display_designator.clone()))?;
+        ed.set_prop(
+            m.index,
+            "MODELNAME",
+            footprint,
+            Some(c.display_designator.clone()),
+        )?;
         let p = ed.props(m.index);
         for i in 0..p.int_or("DATAFILECOUNT", 0) {
             let k = format!("MODELDATAFILEENTITY{i}");
@@ -316,16 +414,22 @@ pub fn set_designator(doc: &SchDoc, designator: &str, new: &str) -> Result<(Vec<
         return Err(Error::usage("the new designator is empty or contains |"));
     }
     let comps = doc.find_components(designator)?;
-    if let Some(other) =
-        doc.components.iter().find(|c| c.designator.eq_ignore_ascii_case(new) && !comps.iter().any(|x| x.index == c.index))
-    {
-        return Err(unsafe_err(format!("{new} is already used by the component at record {}", other.index))
-            .hint("pick a free designator (see `ace sch components`)"));
+    if let Some(other) = doc.components.iter().find(|c| {
+        c.designator.eq_ignore_ascii_case(new) && !comps.iter().any(|x| x.index == c.index)
+    }) {
+        return Err(unsafe_err(format!(
+            "{new} is already used by the component at record {}",
+            other.index
+        ))
+        .hint("pick a free designator (see `ace sch components`)"));
     }
     let mut ed = Editor::new(doc)?;
     for c in comps {
         let Some(r) = c.designator_record else {
-            return Err(unsafe_err(format!("{} has no designator record", c.display_designator)));
+            return Err(unsafe_err(format!(
+                "{} has no designator record",
+                c.display_designator
+            )));
         };
         ed.set_prop(r, "TEXT", new, Some(c.display_designator.clone()))?;
     }
@@ -336,7 +440,9 @@ pub fn set_designator(doc: &SchDoc, designator: &str, new: &str) -> Result<(Vec<
 /// Set (or create) a document parameter (title block field such as `Revision`).
 pub fn set_sheet_param(doc: &SchDoc, name: &str, value: &str) -> Result<(Vec<u8>, Vec<Change>)> {
     if name.trim().is_empty() || name.contains(['|', '=']) || value.contains('|') {
-        return Err(Error::usage("parameter names cannot be empty or contain | or =, values cannot contain |"));
+        return Err(Error::usage(
+            "parameter names cannot be empty or contain | or =, values cannot contain |",
+        ));
     }
     let mut ed = Editor::new(doc)?;
     match doc.doc_param(name) {
@@ -360,13 +466,32 @@ pub fn verify(old: &SchDoc, bytes: &[u8], changes: &[Change]) -> Result<SchDoc> 
     let new = super::doc::load_bytes(&old.path, bytes.to_vec(), &Default::default())
         .map_err(|e| unsafe_err(format!("edited file does not re-parse: {}", e.message)))?;
     let created = changes.iter().filter(|c| c.action == "create").count();
-    let removed: Vec<usize> = changes.iter().filter(|c| c.action == "remove").map(|c| c.index).collect();
-    let old_fh = old.records.iter().filter(|r| r.stream == "FileHeader").count();
-    let new_fh = new.records.iter().filter(|r| r.stream == "FileHeader").count();
+    let removed: Vec<usize> = changes
+        .iter()
+        .filter(|c| c.action == "remove")
+        .map(|c| c.index)
+        .collect();
+    let old_fh = old
+        .records
+        .iter()
+        .filter(|r| r.stream == "FileHeader")
+        .count();
+    let new_fh = new
+        .records
+        .iter()
+        .filter(|r| r.stream == "FileHeader")
+        .count();
     if new_fh != old_fh + created - removed.len() {
-        return Err(unsafe_err(format!("record count {new_fh} after edit, expected {}", old_fh + created - removed.len())));
+        return Err(unsafe_err(format!(
+            "record count {new_fh} after edit, expected {}",
+            old_fh + created - removed.len()
+        )));
     }
-    let touched: HashSet<usize> = changes.iter().filter(|c| c.action == "set").map(|c| c.index).collect();
+    let touched: HashSet<usize> = changes
+        .iter()
+        .filter(|c| c.action == "set")
+        .map(|c| c.index)
+        .collect();
     for r in old.records.iter().filter(|r| r.stream == "FileHeader") {
         if removed.contains(&r.index) {
             continue;
@@ -378,11 +503,20 @@ pub fn verify(old: &SchDoc, bytes: &[u8], changes: &[Change]) -> Result<SchDoc> 
             let edited: Vec<String> = changes
                 .iter()
                 .filter(|c| c.index == r.index)
-                .flat_map(|c| [c.key.to_ascii_uppercase(), format!("%UTF8%{}", c.key.to_ascii_uppercase()), format!("UNICODE__{}", c.key.to_ascii_uppercase())])
+                .flat_map(|c| {
+                    [
+                        c.key.to_ascii_uppercase(),
+                        format!("%UTF8%{}", c.key.to_ascii_uppercase()),
+                        format!("UNICODE__{}", c.key.to_ascii_uppercase()),
+                    ]
+                })
                 .collect();
             for (k, v) in r.props.entries() {
                 if !edited.contains(&k.to_ascii_uppercase()) && n.props.raw(k) != Some(v) {
-                    return Err(unsafe_err(format!("record {} field {k} changed unexpectedly", r.index)));
+                    return Err(unsafe_err(format!(
+                        "record {} field {k} changed unexpectedly",
+                        r.index
+                    )));
                 }
             }
             continue;
@@ -395,7 +529,10 @@ pub fn verify(old: &SchDoc, bytes: &[u8], changes: &[Change]) -> Result<SchDoc> 
             }
         }
         if n.props != want {
-            return Err(unsafe_err(format!("record {} changed unexpectedly", r.index)));
+            return Err(unsafe_err(format!(
+                "record {} changed unexpectedly",
+                r.index
+            )));
         }
     }
     for c in changes {
@@ -405,9 +542,18 @@ pub fn verify(old: &SchDoc, bytes: &[u8], changes: &[Change]) -> Result<SchDoc> 
         let Some(r) = new.records.get(c.index) else {
             return Err(unsafe_err(format!("record {} missing after edit", c.index)));
         };
-        let key = if c.action == "create" { "TEXT" } else { c.key.as_str() };
+        let key = if c.action == "create" {
+            "TEXT"
+        } else {
+            c.key.as_str()
+        };
         if r.props.get(key) != c.after {
-            return Err(unsafe_err(format!("record {} {key} reads back {:?}, expected {:?}", c.index, r.props.get(key), c.after)));
+            return Err(unsafe_err(format!(
+                "record {} {key} reads back {:?}, expected {:?}",
+                c.index,
+                r.props.get(key),
+                c.after
+            )));
         }
     }
     // Other streams untouched.
@@ -418,7 +564,10 @@ pub fn verify(old: &SchDoc, bytes: &[u8], changes: &[Change]) -> Result<SchDoc> 
             continue;
         }
         if a.read(&s.path)? != b.read(&s.path).unwrap_or_default() {
-            return Err(unsafe_err(format!("stream {} changed unexpectedly", s.path)));
+            return Err(unsafe_err(format!(
+                "stream {} changed unexpectedly",
+                s.path
+            )));
         }
     }
     if a.streams().len() != b.streams().len() {
@@ -437,10 +586,16 @@ mod tests {
         // A GBK value read as windows-1252 must survive untouched next to the edited field.
         let mut d = b"|RECORD=41|%UTF8%Text=\xe4\xbe\x9b|Text=\xb9\xa9\x81|Name=X\0".to_vec();
         set_text_field(&mut d, "Name", "Y").unwrap();
-        assert_eq!(d, b"|RECORD=41|%UTF8%Text=\xe4\xbe\x9b|Text=\xb9\xa9\x81|Name=Y\0".to_vec());
+        assert_eq!(
+            d,
+            b"|RECORD=41|%UTF8%Text=\xe4\xbe\x9b|Text=\xb9\xa9\x81|Name=Y\0".to_vec()
+        );
         let mut d = b"|RECORD=41|Text=a|Name=X\0".to_vec();
         set_text_field(&mut d, "Text", "\u{e9}").unwrap();
-        assert_eq!(d, b"|RECORD=41|%UTF8%Text=\xc3\xa9|Text=\xe9|Name=X\0".to_vec());
+        assert_eq!(
+            d,
+            b"|RECORD=41|%UTF8%Text=\xc3\xa9|Text=\xe9|Name=X\0".to_vec()
+        );
         put_field(&mut d, "OWNERINDEX", b"7", None);
         assert!(d.ends_with(b"|Name=X|OWNERINDEX=7\0"));
         assert!(drop_field(&mut d, "ownerindex"));
@@ -450,7 +605,11 @@ mod tests {
 
     #[test]
     fn built_record_parses() {
-        let r = build_record(&[("RECORD".into(), "41".into()), ("TEXT".into(), "\u{e9}t\u{e9}".into())]).unwrap();
+        let r = build_record(&[
+            ("RECORD".into(), "41".into()),
+            ("TEXT".into(), "\u{e9}t\u{e9}".into()),
+        ])
+        .unwrap();
         let p = r.props();
         assert_eq!(p.get("TEXT").as_deref(), Some("\u{e9}t\u{e9}"));
         assert_eq!(p.raw("RECORD"), Some("41"));

@@ -156,7 +156,9 @@ impl Keys<'_> {
         self.p.int(&format!("{}{k}", self.prefix))
     }
     fn b(&self, k: &str) -> Option<bool> {
-        self.p.raw(&format!("{}{k}", self.prefix)).map(|v| v.eq_ignore_ascii_case("TRUE") || v == "T")
+        self.p
+            .raw(&format!("{}{k}", self.prefix))
+            .map(|v| v.eq_ignore_ascii_case("TRUE") || v == "T")
     }
 }
 
@@ -169,7 +171,13 @@ fn stack_entry(k: &Keys, layer: Layer, index: usize) -> StackLayer {
         name: k.s("NAME").unwrap_or_default(),
         layer,
         kind,
-        thickness: if copper { k.len("COPTHICK") } else if diel { k.len("DIELHEIGHT") } else { None },
+        thickness: if copper {
+            k.len("COPTHICK")
+        } else if diel {
+            k.len("DIELHEIGHT")
+        } else {
+            None
+        },
         material: if diel { k.s("DIELMATERIAL") } else { None },
         dielectric_constant: if diel { k.f("DIELCONST") } else { None },
         loss_tangent: if diel { k.f("DIELLOSSTANGENT") } else { None },
@@ -185,7 +193,12 @@ fn stack_entry(k: &Keys, layer: Layer, index: usize) -> StackLayer {
 fn physical(l: Layer) -> bool {
     matches!(
         l.kind(),
-        LayerKind::Copper | LayerKind::Plane | LayerKind::Dielectric | LayerKind::Solder | LayerKind::Overlay | LayerKind::Paste
+        LayerKind::Copper
+            | LayerKind::Plane
+            | LayerKind::Dielectric
+            | LayerKind::Solder
+            | LayerKind::Overlay
+            | LayerKind::Paste
     )
 }
 
@@ -215,7 +228,10 @@ pub fn parse_layers(p: &Props) -> (Vec<LayerDef>, Stackup, Vec<Layer>, Vec<Strin
             legacy_id: layer.v6(),
             user_name: String::new(),
             kind,
-            enabled: !matches!(kind, LayerKind::Mechanical | LayerKind::Copper | LayerKind::Plane | LayerKind::System),
+            enabled: !matches!(
+                kind,
+                LayerKind::Mechanical | LayerKind::Copper | LayerKind::Plane | LayerKind::System
+            ),
             used_by_prims: None,
             copper_thickness: None,
             mech_kind: None,
@@ -237,15 +253,19 @@ pub fn parse_layers(p: &Props) -> (Vec<LayerDef>, Stackup, Vec<Layer>, Vec<Strin
             }
         }
         if matches!(kind, LayerKind::Copper | LayerKind::Plane)
-            && let Some(c) = k.len("COPTHICK") {
-                e.copper_thickness = Some(c);
-            }
+            && let Some(c) = k.len("COPTHICK")
+        {
+            e.copper_thickness = Some(c);
+        }
     };
 
     // Legacy generation: LAYER1..LAYER82 and LAYERV7_i.
     let mut legacy: Vec<(Layer, Keys)> = vec![];
     for n in 1..=82u8 {
-        let k = Keys { p, prefix: format!("LAYER{n}") };
+        let k = Keys {
+            p,
+            prefix: format!("LAYER{n}"),
+        };
         if k.s("NAME").is_some() {
             legacy.push((Layer::from_v6(n), k));
         }
@@ -269,7 +289,10 @@ pub fn parse_layers(p: &Props) -> (Vec<LayerDef>, Stackup, Vec<Layer>, Vec<Strin
     let mut cur: i64 = 1;
     let mut guard = 0;
     while cur > 0 && guard < 100 {
-        let k = Keys { p, prefix: format!("LAYER{cur}") };
+        let k = Keys {
+            p,
+            prefix: format!("LAYER{cur}"),
+        };
         if k.s("NAME").is_none() {
             break;
         }
@@ -300,12 +323,23 @@ pub fn parse_layers(p: &Props) -> (Vec<LayerDef>, Stackup, Vec<Layer>, Vec<Strin
         }
     } else {
         let side = |pre: &str| -> Option<StackLayer> {
-            let k = Keys { p, prefix: pre.to_owned() };
+            let k = Keys {
+                p,
+                prefix: pre.to_owned(),
+            };
             k.len("HEIGHT")?;
             Some(StackLayer {
                 index: 0,
-                name: if pre == "TOP" { "Top Solder".into() } else { "Bottom Solder".into() },
-                layer: if pre == "TOP" { Layer::TOP_SOLDER } else { Layer::BOTTOM_SOLDER },
+                name: if pre == "TOP" {
+                    "Top Solder".into()
+                } else {
+                    "Bottom Solder".into()
+                },
+                layer: if pre == "TOP" {
+                    Layer::TOP_SOLDER
+                } else {
+                    Layer::BOTTOM_SOLDER
+                },
                 kind: LayerKind::Solder,
                 thickness: k.len("HEIGHT"),
                 material: k.s("MATERIAL"),
@@ -320,7 +354,10 @@ pub fn parse_layers(p: &Props) -> (Vec<LayerDef>, Stackup, Vec<Layer>, Vec<Strin
         }
         let mut dn = 0;
         for (i, (l, n)) in chain.iter().enumerate() {
-            let k = Keys { p, prefix: format!("LAYER{n}") };
+            let k = Keys {
+                p,
+                prefix: format!("LAYER{n}"),
+            };
             let mut e = stack_entry(&k, *l, 0);
             e.material = None;
             e.dielectric_constant = None;
@@ -352,7 +389,11 @@ pub fn parse_layers(p: &Props) -> (Vec<LayerDef>, Stackup, Vec<Layer>, Vec<Strin
         }
     }
 
-    let copper: Vec<Layer> = layers.iter().filter(|l| l.layer.is_copper()).map(|l| l.layer).collect();
+    let copper: Vec<Layer> = layers
+        .iter()
+        .filter(|l| l.layer.is_copper())
+        .map(|l| l.layer)
+        .collect();
     let chain_layers: Vec<Layer> = chain.iter().map(|c| c.0).collect();
     if source != "legacy" && !chain_layers.is_empty() && chain_layers != copper {
         warnings.push(format!(
@@ -384,7 +425,10 @@ pub fn parse_layers(p: &Props) -> (Vec<LayerDef>, Stackup, Vec<Layer>, Vec<Strin
                 loss_tangent: st.loss_tangent,
             });
         }
-        if matches!(st.kind, LayerKind::Copper | LayerKind::Plane | LayerKind::Dielectric) {
+        if matches!(
+            st.kind,
+            LayerKind::Copper | LayerKind::Plane | LayerKind::Dielectric
+        ) {
             d.enabled = true;
         }
         if d.user_name.is_empty() {
@@ -394,13 +438,28 @@ pub fn parse_layers(p: &Props) -> (Vec<LayerDef>, Stackup, Vec<Layer>, Vec<Strin
     let total: i64 = layers.iter().filter_map(|l| l.thickness).map(|c| c.0).sum();
     let board: i64 = layers
         .iter()
-        .filter(|l| matches!(l.kind, LayerKind::Copper | LayerKind::Plane | LayerKind::Dielectric))
+        .filter(|l| {
+            matches!(
+                l.kind,
+                LayerKind::Copper | LayerKind::Plane | LayerKind::Dielectric
+            )
+        })
         .filter_map(|l| l.thickness)
         .map(|c| c.0)
         .sum();
     let mut defs: Vec<LayerDef> = defs.into_values().collect();
     defs.sort_by_key(|d| (d.stack_index.unwrap_or(usize::MAX), d.layer.order()));
-    (defs, Stackup { source, layers, total_thickness: Coord(total), board_thickness: Coord(board) }, copper, warnings)
+    (
+        defs,
+        Stackup {
+            source,
+            layers,
+            total_thickness: Coord(total),
+            board_thickness: Coord(board),
+        },
+        copper,
+        warnings,
+    )
 }
 
 pub fn parse_board(p: Props) -> (Board, Vec<String>) {
@@ -408,17 +467,24 @@ pub fn parse_board(p: Props) -> (Board, Vec<String>) {
     let (layers, stackup, copper, warnings) = parse_layers(&p);
     let mut layer_pairs = vec![];
     for i in 0.. {
-        let Some(low) = p.raw(&format!("LAYERPAIR{i}LOW")) else { break };
+        let Some(low) = p.raw(&format!("LAYERPAIR{i}LOW")) else {
+            break;
+        };
         layer_pairs.push(LayerPair {
             low: Layer::from_name(low),
-            high: p.raw(&format!("LAYERPAIR{i}HIGH")).and_then(Layer::from_name),
+            high: p
+                .raw(&format!("LAYERPAIR{i}HIGH"))
+                .and_then(Layer::from_name),
             drill_guide: p.bool(&format!("LAYERPAIR{i}DRILLGUIDE")),
             drill_drawing: p.bool(&format!("LAYERPAIR{i}DRILLDRAWING")),
         });
     }
     let mut plane_nets = IndexMap::new();
     for n in 1..=16 {
-        if let Some(v) = p.get(&format!("PLANE{n}NETNAME")).filter(|v| v != "(No Net)" && !v.is_empty()) {
+        if let Some(v) = p
+            .get(&format!("PLANE{n}NETNAME"))
+            .filter(|v| v != "(No Net)" && !v.is_empty())
+        {
             plane_nets.insert(Layer::plane(n).name(), v);
         }
     }

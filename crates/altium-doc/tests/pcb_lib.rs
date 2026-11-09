@@ -28,10 +28,17 @@ fn beaglebone_library() {
     assert_eq!(names, ["BBB_CAPE_HEADER", "SOIC-8", "R0603"]);
     let soic = lib.footprint("soic-8").unwrap();
     assert_eq!(soic.pads.len(), 8);
-    assert_eq!((soic.tracks.len(), soic.arcs.len(), soic.bodies.len()), (14, 3, 1));
+    assert_eq!(
+        (soic.tracks.len(), soic.arcs.len(), soic.bodies.len()),
+        (14, 3, 1)
+    );
     assert!(soic.description.starts_with("SOIC, 8-Leads"));
     assert!((soic.height.unwrap().mil() - 68.8976).abs() < 1e-3);
-    assert!(soic.pads.iter().all(|p| p.layer == Layer::TOP && p.hole_size.is_none()));
+    assert!(
+        soic.pads
+            .iter()
+            .all(|p| p.layer == Layer::TOP && p.hole_size.is_none())
+    );
     let r = lib.footprint("R0603").unwrap();
     assert_eq!(r.pads.len(), 2);
     let pads: usize = lib.footprints.iter().map(|f| f.pads.len()).sum();
@@ -56,7 +63,10 @@ fn quasar_library() {
     assert_eq!(hc.storage, "HC-49_U3H (low profile)");
     // Footprint WideStrings (ENCODEDTEXTn code points) supply the text.
     assert_eq!(lib.footprint("HCM").unwrap().texts[0].text, "+");
-    assert_eq!(lib.footprint("DC-044").unwrap().description, "Разъем питания штыревой на плату, 5.5 x 2.5 мм");
+    assert_eq!(
+        lib.footprint("DC-044").unwrap().description,
+        "Разъем питания штыревой на плату, 5.5 x 2.5 мм"
+    );
     let lq = lib.footprint("LQFP-48_L").unwrap();
     assert_eq!(lq.pads.len(), 48);
     let pads: usize = lib.footprints.iter().map(|f| f.pads.len()).sum();

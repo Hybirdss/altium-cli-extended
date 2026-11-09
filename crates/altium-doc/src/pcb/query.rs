@@ -77,20 +77,32 @@ fn routing(doc: &PcbDoc, net: u16) -> NetLength {
     let (mut nt, mut na) = (0, 0);
     let mut by_layer: BTreeMap<Layer, i64> = BTreeMap::new();
     for t in &doc.tracks {
-        if t.owner.net_index == Some(net) && t.layer.is_copper() && t.polygon.is_none() && !t.keepout {
+        if t.owner.net_index == Some(net)
+            && t.layer.is_copper()
+            && t.polygon.is_none()
+            && !t.keepout
+        {
             track += t.length.0;
             nt += 1;
             *by_layer.entry(t.layer).or_default() += t.length.0;
         }
     }
     for a in &doc.arcs {
-        if a.owner.net_index == Some(net) && a.layer.is_copper() && a.polygon.is_none() && !a.keepout {
+        if a.owner.net_index == Some(net)
+            && a.layer.is_copper()
+            && a.polygon.is_none()
+            && !a.keepout
+        {
             arc += a.length.0;
             na += 1;
             *by_layer.entry(a.layer).or_default() += a.length.0;
         }
     }
-    let vias = doc.vias.iter().filter(|v| v.owner.net_index == Some(net)).count();
+    let vias = doc
+        .vias
+        .iter()
+        .filter(|v| v.owner.net_index == Some(net))
+        .count();
     let mut layers: Vec<Layer> = by_layer.keys().copied().collect();
     layers.sort_by_key(|l| l.order());
     let mut bl: Vec<(Layer, i64)> = by_layer.into_iter().collect();
@@ -128,7 +140,11 @@ pub fn lengths(doc: &PcbDoc, class: Option<&str>) -> Vec<NetLength> {
 
 pub fn pad_ref(p: &super::Pad) -> PadRef {
     PadRef {
-        node: format!("{}.{}", p.owner.component.clone().unwrap_or_default(), p.number),
+        node: format!(
+            "{}.{}",
+            p.owner.component.clone().unwrap_or_default(),
+            p.number
+        ),
         component: p.owner.component.clone(),
         number: p.number.clone(),
         layer: p.layer,
@@ -141,7 +157,12 @@ pub fn pad_ref(p: &super::Pad) -> PadRef {
 pub fn net_detail(doc: &PcbDoc, net_index: usize) -> NetDetail {
     let ni = net_index as u16;
     let n = &doc.nets[net_index];
-    let pads: Vec<PadRef> = doc.pads.iter().filter(|p| p.owner.net_index == Some(ni)).map(pad_ref).collect();
+    let pads: Vec<PadRef> = doc
+        .pads
+        .iter()
+        .filter(|p| p.owner.net_index == Some(ni))
+        .map(pad_ref)
+        .collect();
     let r = routing(doc, ni);
     let mut layers: BTreeSet<Layer> = r.layers.iter().copied().collect();
     for p in doc.pads.iter().filter(|p| p.owner.net_index == Some(ni)) {
@@ -165,7 +186,11 @@ pub fn net_detail(doc: &PcbDoc, net_index: usize) -> NetDetail {
             .map(|c| c.name.clone())
             .collect()
     };
-    let nodes: BTreeSet<&str> = pads.iter().filter(|p| p.component.is_some()).map(|p| p.node.as_str()).collect();
+    let nodes: BTreeSet<&str> = pads
+        .iter()
+        .filter(|p| p.component.is_some())
+        .map(|p| p.node.as_str())
+        .collect();
     NetDetail {
         index: net_index,
         name: n.name.clone(),
@@ -173,8 +198,16 @@ pub fn net_detail(doc: &PcbDoc, net_index: usize) -> NetDetail {
         tracks: r.tracks,
         arcs: r.arcs,
         vias: r.vias,
-        fills: doc.fills.iter().filter(|f| f.owner.net_index == Some(ni)).count(),
-        regions: doc.regions.iter().filter(|f| f.owner.net_index == Some(ni)).count(),
+        fills: doc
+            .fills
+            .iter()
+            .filter(|f| f.owner.net_index == Some(ni))
+            .count(),
+        regions: doc
+            .regions
+            .iter()
+            .filter(|f| f.owner.net_index == Some(ni))
+            .count(),
         polygons: doc
             .polygons
             .iter()
@@ -215,16 +248,18 @@ pub fn holes(doc: &PcbDoc) -> Vec<Hole> {
         let shape = p.hole_shape.unwrap_or("round");
         let slot = p.slot_length.filter(|_| shape == "slot");
         let span = p.layer.name();
-        let h = map.entry((d.0, shape, slot.map(|s| s.0).unwrap_or(0), p.plated)).or_insert(Hole {
-            diameter: d,
-            shape,
-            slot_length: slot,
-            plated: p.plated,
-            count: 0,
-            pads: 0,
-            vias: 0,
-            spans: vec![],
-        });
+        let h = map
+            .entry((d.0, shape, slot.map(|s| s.0).unwrap_or(0), p.plated))
+            .or_insert(Hole {
+                diameter: d,
+                shape,
+                slot_length: slot,
+                plated: p.plated,
+                count: 0,
+                pads: 0,
+                vias: 0,
+                spans: vec![],
+            });
         h.count += 1;
         h.pads += 1;
         if !h.spans.contains(&span) {
@@ -236,16 +271,18 @@ pub fn holes(doc: &PcbDoc) -> Vec<Hole> {
             continue;
         }
         let span = format!("{}-{}", v.start_layer, v.end_layer);
-        let h = map.entry((v.hole_size.0, "round", 0, true)).or_insert(Hole {
-            diameter: v.hole_size,
-            shape: "round",
-            slot_length: None,
-            plated: true,
-            count: 0,
-            pads: 0,
-            vias: 0,
-            spans: vec![],
-        });
+        let h = map
+            .entry((v.hole_size.0, "round", 0, true))
+            .or_insert(Hole {
+                diameter: v.hole_size,
+                shape: "round",
+                slot_length: None,
+                plated: true,
+                count: 0,
+                pads: 0,
+                vias: 0,
+                spans: vec![],
+            });
         h.count += 1;
         h.vias += 1;
         if !h.spans.contains(&span) {
@@ -277,7 +314,11 @@ pub struct LayerStats {
 pub fn layer_stats(doc: &PcbDoc) -> Vec<LayerStats> {
     let mut m: BTreeMap<Layer, LayerStats> = BTreeMap::new();
     fn get(m: &mut BTreeMap<Layer, LayerStats>, l: Layer) -> &mut LayerStats {
-        m.entry(l).or_insert_with(|| LayerStats { layer: l, kind: Some(l.kind()), ..Default::default() })
+        m.entry(l).or_insert_with(|| LayerStats {
+            layer: l,
+            kind: Some(l.kind()),
+            ..Default::default()
+        })
     }
     for p in &doc.pads {
         get(&mut m, p.layer).pads += 1;
@@ -315,7 +356,16 @@ pub fn layer_stats(doc: &PcbDoc) -> Vec<LayerStats> {
     let mut v: Vec<LayerStats> = m
         .into_values()
         .map(|mut s| {
-            s.total = s.pads + s.tracks + s.arcs + s.fills + s.regions + s.texts + s.polygons + s.bodies + s.dimensions + s.vias;
+            s.total = s.pads
+                + s.tracks
+                + s.arcs
+                + s.fills
+                + s.regions
+                + s.texts
+                + s.polygons
+                + s.bodies
+                + s.dimensions
+                + s.vias;
             s
         })
         .collect();
@@ -325,7 +375,10 @@ pub fn layer_stats(doc: &PcbDoc) -> Vec<LayerStats> {
 
 /// Number of primitives per layer (vias counted on their start and end layers).
 pub fn layer_usage(doc: &PcbDoc) -> IndexMap<Layer, usize> {
-    layer_stats(doc).into_iter().map(|s| (s.layer, s.total)).collect()
+    layer_stats(doc)
+        .into_iter()
+        .map(|s| (s.layer, s.total))
+        .collect()
 }
 
 /// Bounding box of every copper/overlay primitive (pads use their size, tracks their width).
@@ -368,8 +421,20 @@ pub fn object_counts(doc: &PcbDoc) -> IndexMap<&'static str, usize> {
     }
     m.insert("texts", doc.texts.len());
     if w(part::REGIONS) {
-        m.insert("regions", doc.regions.iter().filter(|r| r.source != "board_regions").count());
-        m.insert("board_regions", doc.regions.iter().filter(|r| r.source == "board_regions").count());
+        m.insert(
+            "regions",
+            doc.regions
+                .iter()
+                .filter(|r| r.source != "board_regions")
+                .count(),
+        );
+        m.insert(
+            "board_regions",
+            doc.regions
+                .iter()
+                .filter(|r| r.source == "board_regions")
+                .count(),
+        );
     }
     if w(part::POLYGONS) {
         m.insert("polygons", doc.polygons.len());

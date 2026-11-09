@@ -26,13 +26,15 @@ impl WineHost {
     }
 
     fn unix(&self, win: &str) -> Result<PathBuf> {
-        paths::to_unix(&self.inst.prefix, win).ok_or_else(|| Error::internal(format!("cannot map {win} to the host")))
+        paths::to_unix(&self.inst.prefix, win)
+            .ok_or_else(|| Error::internal(format!("cannot map {win} to the host")))
     }
 
     /// For Flatpak Bottles: the directory that needs a filesystem override if `p` is invisible
     /// inside the sandbox.
     pub fn sandbox_blocks(&self, p: &Path) -> Option<PathBuf> {
-        if !matches!(self.inst.runtime, Runtime::Bottles { .. }) || p.starts_with(&self.inst.prefix) {
+        if !matches!(self.inst.runtime, Runtime::Bottles { .. }) || p.starts_with(&self.inst.prefix)
+        {
             return None;
         }
         let h = home();
@@ -40,12 +42,27 @@ impl WineHost {
             "host" | "host-os" => true,
             "home" | "~" => p.starts_with(&h),
             other => {
-                let other = other.trim_end_matches(":rw").trim_end_matches(":ro").trim_end_matches(":create");
-                let gp = if let Some(r) = other.strip_prefix("~/") { h.join(r) } else { PathBuf::from(other) };
+                let other = other
+                    .trim_end_matches(":rw")
+                    .trim_end_matches(":ro")
+                    .trim_end_matches(":create");
+                let gp = if let Some(r) = other.strip_prefix("~/") {
+                    h.join(r)
+                } else {
+                    PathBuf::from(other)
+                };
                 p.starts_with(gp)
             }
         });
-        if visible { None } else { Some(p.parent().map(Path::to_path_buf).unwrap_or_else(|| p.to_path_buf())) }
+        if visible {
+            None
+        } else {
+            Some(
+                p.parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| p.to_path_buf()),
+            )
+        }
     }
 
     /// Give the Bottles sandbox access to a directory.
@@ -55,23 +72,39 @@ impl WineHost {
         }
         let abs = paths::absolute(dir);
         let st = std::process::Command::new("flatpak")
-            .args(["override", "--user", &format!("--filesystem={}", abs.display()), BOTTLES_APP])
+            .args([
+                "override",
+                "--user",
+                &format!("--filesystem={}", abs.display()),
+                BOTTLES_APP,
+            ])
             .status()?;
         if !st.success() {
             return Err(Error::new(ErrorCode::Io, "flatpak override failed"));
         }
-        Ok(json!({"changed": true, "granted": abs, "note": "restart Altium for the change to apply"}))
+        Ok(
+            json!({"changed": true, "granted": abs, "note": "restart Altium for the change to apply"}),
+        )
     }
 }
 
 /// `filesystems=` entries of the Flatpak overrides for Bottles.
 pub fn flatpak_filesystems() -> Vec<String> {
     let mut v = vec![];
-    for p in [home().join(".local/share/flatpak/overrides").join(BOTTLES_APP), PathBuf::from("/var/lib/flatpak/overrides").join(BOTTLES_APP)] {
+    for p in [
+        home()
+            .join(".local/share/flatpak/overrides")
+            .join(BOTTLES_APP),
+        PathBuf::from("/var/lib/flatpak/overrides").join(BOTTLES_APP),
+    ] {
         if let Ok(s) = std::fs::read_to_string(p) {
             for line in s.lines() {
                 if let Some(list) = line.strip_prefix("filesystems=") {
-                    v.extend(list.split(';').filter(|x| !x.is_empty() && !x.starts_with('!')).map(str::to_owned));
+                    v.extend(
+                        list.split(';')
+                            .filter(|x| !x.is_empty() && !x.starts_with('!'))
+                            .map(str::to_owned),
+                    );
                 }
             }
         }
@@ -80,7 +113,9 @@ pub fn flatpak_filesystems() -> Vec<String> {
 }
 
 fn changed_since(dir: &Path, t: SystemTime, depth: usize, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.flatten() {
         let p = e.path();
         let Ok(md) = e.metadata() else { continue };
@@ -167,18 +202,33 @@ impl Host for WineHost {
     }
 
     fn clock(&self) -> Result<String> {
-        let ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        let ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
         Ok(ms.to_string())
     }
 
     fn stage_in(&self, set: &crate::ops::StageSet, file: &Path) -> Result<Staged> {
         let abs = paths::absolute(file);
         if !abs.exists() {
-            return Err(Error::new(ErrorCode::FileNotFound, format!("{} does not exist", abs.display())));
+            return Err(Error::new(
+                ErrorCode::FileNotFound,
+                format!("{} does not exist", abs.display()),
+            ));
         }
         if let Some(dir) = self.sandbox_blocks(&abs) {
-            return Err(Error::new(ErrorCode::DesignerUnavailable, format!("Altium (inside the Bottles sandbox) cannot see {}", abs.display()))
-                .hint(format!("grant access once: `ace designer grant {}`", dir.display())));
+            return Err(Error::new(
+                ErrorCode::DesignerUnavailable,
+                format!(
+                    "Altium (inside the Bottles sandbox) cannot see {}",
+                    abs.display()
+                ),
+            )
+            .hint(format!(
+                "grant access once: `ace designer grant {}`",
+                dir.display()
+            )));
         }
         let root = paths::absolute(&set.root);
         Ok(Staged {
@@ -190,7 +240,12 @@ impl Host for WineHost {
         })
     }
 
-    fn stage_out(&self, staged: &Staged, since: &str, _opts: altium_format::fsx::WriteOpts) -> Result<(Vec<PathBuf>, String)> {
+    fn stage_out(
+        &self,
+        staged: &Staged,
+        since: &str,
+        _opts: altium_format::fsx::WriteOpts,
+    ) -> Result<(Vec<PathBuf>, String)> {
         let ms: u64 = since.parse().unwrap_or(0);
         let t = UNIX_EPOCH + std::time::Duration::from_millis(ms);
         let mut out = vec![];
@@ -198,5 +253,4 @@ impl Host for WineHost {
         out.sort();
         Ok((out, self.clock()?))
     }
-
 }

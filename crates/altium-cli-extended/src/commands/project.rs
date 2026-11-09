@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use clap::Subcommand;
 use serde_json::{Value, json};
 
-use altium_doc::project::{Project, VariationKind, resolve_ci};
 use crate::ctx::Ctx;
-use altium_core::error::{Error, ErrorCode, Result};
-use altium_format::DocKind;
 use crate::meta::{Backend::*, CmdMeta, Effect::*, m};
 use crate::output::{Out, list};
+use altium_core::error::{Error, ErrorCode, Result};
+use altium_doc::project::{Project, VariationKind, resolve_ci};
+use altium_format::DocKind;
 
 #[derive(Subcommand, Debug)]
 pub enum ProjectCmd {
@@ -45,11 +45,20 @@ pub enum ProjectCmd {
         names: bool,
     },
     /// Set (or add) a project parameter.
-    SetParameter { project: PathBuf, name: String, value: String },
+    SetParameter {
+        project: PathBuf,
+        name: String,
+        value: String,
+    },
     /// Remove a project parameter.
     RemoveParameter { project: PathBuf, name: String },
     /// Set any raw project setting `[section] key=value` (escape hatch).
-    SetOption { project: PathBuf, section: String, key: String, value: String },
+    SetOption {
+        project: PathBuf,
+        section: String,
+        key: String,
+        value: String,
+    },
     /// Add an existing document to the project.
     AddDocument { project: PathBuf, document: PathBuf },
     /// Remove a document from the project (the file itself is kept).
@@ -80,9 +89,19 @@ pub enum ProjectCmd {
         unique_id: Option<String>,
     },
     /// Set a parameter value of one part in a variant (e.g. Comment=22k).
-    SetVariantParam { project: PathBuf, variant: String, designator: String, name: String, value: String },
+    SetVariantParam {
+        project: PathBuf,
+        variant: String,
+        designator: String,
+        name: String,
+        value: String,
+    },
     /// Remove every variation (fitting and parameters) of one part from a variant.
-    ClearVariation { project: PathBuf, variant: String, designator: String },
+    ClearVariation {
+        project: PathBuf,
+        variant: String,
+        designator: String,
+    },
     /// Find .PrjPcb projects under a directory.
     Find {
         #[arg(default_value = ".")]
@@ -97,60 +116,187 @@ pub enum ProjectCmd {
 }
 
 pub const META: &[CmdMeta] = &[
-    m("project info", Native, Read,
-      "{name, path, documents:{schematic:N,...}, missing_documents:[...], variants:[names], parameters:N, options:{...}}",
-      "ace project info Board.PrjPcb", ""),
-    m("project documents", Native, Read, "{count, items:[{index, rel, path, kind, exists, unique_id, generated?}]}",
-      "ace project documents Board.PrjPcb --kind schematic",
-      "Paths are resolved case-insensitively; exists=false means the project references a missing file."),
-    m("project parameters", Native, Read, "{count, items:[{name, value}]}", "ace project parameters Board.PrjPcb", ""),
-    m("project variants", Native, Read, "{count, items:[{index, name, unique_id, allow_fabrication, variations:[{designator, kind, alternate_part}], parameters, param_variations}]}",
-      "ace project variants Board.PrjPcb", "kind: not_fitted | fitted (parameter-only) | alternate."),
-    m("project variant", Native, Read, "variant object", "ace project variant Board.PrjPcb \"No LCD\"", "Name, unique id or 1-based index."),
-    m("project outputs", Native, Read, "{count, items:[{group, index, type, name, document, variant, default}]}",
-      "ace project outputs Board.PrjPcb", "Fabrication outputs usually live in .OutJob files instead: `ace outjob outputs`."),
-    m("project settings", Native, Read, "{count, items:[{section, entries:{...}}]}",
-      "ace project settings Board.PrjPcb --section Design", ""),
-    m("project set-parameter", Native, Write, "{changed, before, after, backup}", "ace project set-parameter Board.PrjPcb Revision B", ""),
-    m("project remove-parameter", Native, Write, "{changed, backup}", "ace project remove-parameter Board.PrjPcb Revision", ""),
-    m("project set-option", Native, Write, "{changed, before, after, backup}",
-      "ace project set-option Board.PrjPcb Design OutputPath Outputs", "Raw edit; prefer a dedicated command when one exists."),
-    m("project add-document", Native, Write, "{added:{index, rel}, backup}", "ace project add-document Board.PrjPcb Power.SchDoc", ""),
-    m("project remove-document", Native, Write, "{removed:{index, rel}, backup}", "ace project remove-document Board.PrjPcb Old.SchDoc", "Matches by file name or relative path."),
-    m("project add-variant", Native, Write, "{changed, variant:{index, name, unique_id, unique_id_note?}, backup, verified, verification:{candidate_reparsed,written,read_back}}",
-      "ace project add-variant Board.PrjPcb Lite", "Then mark parts with `project set-variation` / `project set-variant-param`; `ace bom --variant` applies it. A dry-run returns unique_id:null with unique_id_note because IDs are assigned on apply; verification separates candidate reparse from disk read-back."),
-    m("project remove-variant", Native, Write, "{changed, removed, backup, verified}", "ace project remove-variant Board.PrjPcb Lite", ""),
-    m("project set-variation", Native, Write, "{changed, variant, designator, before:variation|null, after:variation, raw:{before,after}, unique_id_source, backup, verified, verification:{candidate_reparsed,written,read_back}}",
-      "ace project set-variation Board.PrjPcb Lite R12",
-      "Default not fitted; --fitted or --alternate <LibRef>. The unique-id path comes from the PCB component link (SOURCEUNIQUEID) or the schematic part."),
-    m("project set-variant-param", Native, Write, "{changed, variant, designator, name, before, after, backup, verified}",
-      "ace project set-variant-param Board.PrjPcb Lite R1 Comment 22k", ""),
-    m("project clear-variation", Native, Write, "{changed, removed, backup, verified}", "ace project clear-variation Board.PrjPcb Lite R12", "removed counts both component variations and parameter variations."),
-    m("project find", Native, Read, "{count, items:[{path, documents}]}", "ace project find ~/designs", ""),
+    m(
+        "project info",
+        Native,
+        Read,
+        "{name, path, documents:{schematic:N,...}, missing_documents:[...], variants:[names], parameters:N, options:{...}}",
+        "ace project info Board.PrjPcb",
+        "",
+    ),
+    m(
+        "project documents",
+        Native,
+        Read,
+        "{count, items:[{index, rel, path, kind, exists, unique_id, generated?}]}",
+        "ace project documents Board.PrjPcb --kind schematic",
+        "Paths are resolved case-insensitively; exists=false means the project references a missing file.",
+    ),
+    m(
+        "project parameters",
+        Native,
+        Read,
+        "{count, items:[{name, value}]}",
+        "ace project parameters Board.PrjPcb",
+        "",
+    ),
+    m(
+        "project variants",
+        Native,
+        Read,
+        "{count, items:[{index, name, unique_id, allow_fabrication, variations:[{designator, kind, alternate_part}], parameters, param_variations}]}",
+        "ace project variants Board.PrjPcb",
+        "kind: not_fitted | fitted (parameter-only) | alternate.",
+    ),
+    m(
+        "project variant",
+        Native,
+        Read,
+        "variant object",
+        "ace project variant Board.PrjPcb \"No LCD\"",
+        "Name, unique id or 1-based index.",
+    ),
+    m(
+        "project outputs",
+        Native,
+        Read,
+        "{count, items:[{group, index, type, name, document, variant, default}]}",
+        "ace project outputs Board.PrjPcb",
+        "Fabrication outputs usually live in .OutJob files instead: `ace outjob outputs`.",
+    ),
+    m(
+        "project settings",
+        Native,
+        Read,
+        "{count, items:[{section, entries:{...}}]}",
+        "ace project settings Board.PrjPcb --section Design",
+        "",
+    ),
+    m(
+        "project set-parameter",
+        Native,
+        Write,
+        "{changed, before, after, backup}",
+        "ace project set-parameter Board.PrjPcb Revision B",
+        "",
+    ),
+    m(
+        "project remove-parameter",
+        Native,
+        Write,
+        "{changed, backup}",
+        "ace project remove-parameter Board.PrjPcb Revision",
+        "",
+    ),
+    m(
+        "project set-option",
+        Native,
+        Write,
+        "{changed, before, after, backup}",
+        "ace project set-option Board.PrjPcb Design OutputPath Outputs",
+        "Raw edit; prefer a dedicated command when one exists.",
+    ),
+    m(
+        "project add-document",
+        Native,
+        Write,
+        "{added:{index, rel}, backup}",
+        "ace project add-document Board.PrjPcb Power.SchDoc",
+        "",
+    ),
+    m(
+        "project remove-document",
+        Native,
+        Write,
+        "{removed:{index, rel}, backup}",
+        "ace project remove-document Board.PrjPcb Old.SchDoc",
+        "Matches by file name or relative path.",
+    ),
+    m(
+        "project add-variant",
+        Native,
+        Write,
+        "{changed, variant:{index, name, unique_id, unique_id_note?}, backup, verified, verification:{candidate_reparsed,written,read_back}}",
+        "ace project add-variant Board.PrjPcb Lite",
+        "Then mark parts with `project set-variation` / `project set-variant-param`; `ace bom --variant` applies it. A dry-run returns unique_id:null with unique_id_note because IDs are assigned on apply; verification separates candidate reparse from disk read-back.",
+    ),
+    m(
+        "project remove-variant",
+        Native,
+        Write,
+        "{changed, removed, backup, verified}",
+        "ace project remove-variant Board.PrjPcb Lite",
+        "",
+    ),
+    m(
+        "project set-variation",
+        Native,
+        Write,
+        "{changed, variant, designator, before:variation|null, after:variation, raw:{before,after}, unique_id_source, backup, verified, verification:{candidate_reparsed,written,read_back}}",
+        "ace project set-variation Board.PrjPcb Lite R12",
+        "Default not fitted; --fitted or --alternate <LibRef>. The unique-id path comes from the PCB component link (SOURCEUNIQUEID) or the schematic part.",
+    ),
+    m(
+        "project set-variant-param",
+        Native,
+        Write,
+        "{changed, variant, designator, name, before, after, backup, verified}",
+        "ace project set-variant-param Board.PrjPcb Lite R1 Comment 22k",
+        "",
+    ),
+    m(
+        "project clear-variation",
+        Native,
+        Write,
+        "{changed, removed, backup, verified}",
+        "ace project clear-variation Board.PrjPcb Lite R12",
+        "removed counts both component variations and parameter variations.",
+    ),
+    m(
+        "project find",
+        Native,
+        Read,
+        "{count, items:[{path, documents}]}",
+        "ace project find ~/designs",
+        "",
+    ),
 ];
 
 pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
     match c {
         ProjectCmd::Info { project } => info(&project, ctx),
-        ProjectCmd::Documents { project, kind, generated } => {
+        ProjectCmd::Documents {
+            project,
+            kind,
+            generated,
+        } => {
             let p = Project::load(&ctx.input(&project)?)?;
             let want = kind.map(|k| k.to_ascii_lowercase());
             let items: Vec<_> = p
                 .documents
                 .iter()
                 .filter(|d| generated || !d.generated)
-                .filter(|d| want.as_deref().is_none_or(|k| json!(d.kind).as_str() == Some(k)))
+                .filter(|d| {
+                    want.as_deref()
+                        .is_none_or(|k| json!(d.kind).as_str() == Some(k))
+                })
                 .collect();
             let missing = items.iter().filter(|d| !d.exists).count();
             let mut out = Out::new(list(&items)?)?;
             if missing > 0 {
-                out = out.warn(format!("{missing} referenced document(s) not found on disk"));
+                out = out.warn(format!(
+                    "{missing} referenced document(s) not found on disk"
+                ));
             }
             Ok(out)
         }
         ProjectCmd::Parameters { project } => {
             let p = Project::load(&ctx.input(&project)?)?;
-            let items: Vec<Value> = p.parameters().into_iter().map(|(k, v)| json!({"name": k, "value": v})).collect();
+            let items: Vec<Value> = p
+                .parameters()
+                .into_iter()
+                .map(|(k, v)| json!({"name": k, "value": v}))
+                .collect();
             Out::new(list(&items)?)
         }
         ProjectCmd::Variants { project } => {
@@ -166,7 +312,9 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
             let mut items = vec![];
             for (_, s) in p.ini.numbered("OutputGroup") {
                 for i in 1.. {
-                    let Some(t) = s.get(&format!("OutputType{i}")) else { break };
+                    let Some(t) = s.get(&format!("OutputType{i}")) else {
+                        break;
+                    };
                     items.push(json!({
                         "group": s.str("Name"),
                         "index": i,
@@ -180,7 +328,11 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
             }
             Out::new(list(&items)?)
         }
-        ProjectCmd::Settings { project, section, names } => {
+        ProjectCmd::Settings {
+            project,
+            section,
+            names,
+        } => {
             let p = Project::load(&ctx.input(&project)?)?;
             if names {
                 let n: Vec<&str> = p.ini.sections.iter().map(|s| s.name.as_str()).collect();
@@ -190,16 +342,27 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
                 .ini
                 .sections
                 .iter()
-                .filter(|s| section.as_deref().is_none_or(|w| s.name.eq_ignore_ascii_case(w)))
+                .filter(|s| {
+                    section
+                        .as_deref()
+                        .is_none_or(|w| s.name.eq_ignore_ascii_case(w))
+                })
                 .map(|s| json!({"section": s.name, "entries": s.to_json()}))
                 .collect();
             if items.is_empty() {
-                return Err(Error::not_found(format!("no section {:?}", section.unwrap_or_default()))
-                    .hint("list them with `ace project settings <prj> --names`"));
+                return Err(Error::not_found(format!(
+                    "no section {:?}",
+                    section.unwrap_or_default()
+                ))
+                .hint("list them with `ace project settings <prj> --names`"));
             }
             Out::new(list(&items)?)
         }
-        ProjectCmd::SetParameter { project, name, value } => {
+        ProjectCmd::SetParameter {
+            project,
+            name,
+            value,
+        } => {
             let path = ctx.input(&project)?;
             let mut p = Project::load(&path)?;
             let existing = p
@@ -210,9 +373,18 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
                 .map(|(n, s)| (n, s.str("Value")));
             let before = existing.as_ref().map(|(_, v)| v.clone());
             match existing {
-                Some((n, _)) => p.ini.section_mut(&format!("Parameter{n}")).unwrap().set("Value", &value),
+                Some((n, _)) => p
+                    .ini
+                    .section_mut(&format!("Parameter{n}"))
+                    .unwrap()
+                    .set("Value", &value),
                 None => {
-                    let n = p.ini.numbered("Parameter").last().map(|(n, _)| n + 1).unwrap_or(1);
+                    let n = p
+                        .ini
+                        .numbered("Parameter")
+                        .last()
+                        .map(|(n, _)| n + 1)
+                        .unwrap_or(1);
                     let mut s = altium_format::ini::Section::new(format!("Parameter{n}"));
                     s.set("Name", &name);
                     s.set("Value", &value);
@@ -220,14 +392,23 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
                 }
             }
             let changed = before.as_deref() != Some(value.as_str());
-            let backup = if changed { save(ctx, &path, &p.ini)? } else { None };
-            Out::new(json!({"changed": changed, "name": name, "before": before, "after": value, "backup": backup}))
+            let backup = if changed {
+                save(ctx, &path, &p.ini)?
+            } else {
+                None
+            };
+            Out::new(
+                json!({"changed": changed, "name": name, "before": before, "after": value, "backup": backup}),
+            )
         }
         ProjectCmd::RemoveParameter { project, name } => {
             let path = ctx.input(&project)?;
             let mut p = Project::load(&path)?;
-            let Some((n, _)) =
-                p.ini.numbered("Parameter").into_iter().find(|(_, s)| s.str("Name").eq_ignore_ascii_case(&name))
+            let Some((n, _)) = p
+                .ini
+                .numbered("Parameter")
+                .into_iter()
+                .find(|(_, s)| s.str("Name").eq_ignore_ascii_case(&name))
             else {
                 return Err(Error::not_found(format!("no project parameter {name:?}")));
             };
@@ -236,31 +417,58 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
             let backup = save(ctx, &path, &p.ini)?;
             Out::new(json!({"changed": true, "name": name, "backup": backup}))
         }
-        ProjectCmd::SetOption { project, section, key, value } => {
+        ProjectCmd::SetOption {
+            project,
+            section,
+            key,
+            value,
+        } => {
             let path = ctx.input(&project)?;
             let mut p = Project::load(&path)?;
             if p.ini.section(&section).is_none() {
-                p.ini.sections.push(altium_format::ini::Section::new(section.clone()));
+                p.ini
+                    .sections
+                    .push(altium_format::ini::Section::new(section.clone()));
             }
             let s = p.ini.section_mut(&section).unwrap();
             let before = s.get(&key).map(str::to_owned);
             s.set(&key, &value);
             let changed = before.as_deref() != Some(value.as_str());
-            let backup = if changed { save(ctx, &path, &p.ini)? } else { None };
-            Out::new(json!({"changed": changed, "section": section, "key": key, "before": before, "after": value, "backup": backup}))
+            let backup = if changed {
+                save(ctx, &path, &p.ini)?
+            } else {
+                None
+            };
+            Out::new(
+                json!({"changed": changed, "section": section, "key": key, "before": before, "after": value, "backup": backup}),
+            )
         }
         ProjectCmd::AddDocument { project, document } => {
             let path = ctx.input(&project)?;
             let mut p = Project::load(&path)?;
             let rel = relative_windows(&p.dir, &document);
-            if p.documents.iter().any(|d| !d.generated && d.rel.eq_ignore_ascii_case(&rel)) {
-                return Err(Error::new(altium_core::error::ErrorCode::Usage, format!("{rel} is already in the project")));
+            if p.documents
+                .iter()
+                .any(|d| !d.generated && d.rel.eq_ignore_ascii_case(&rel))
+            {
+                return Err(Error::new(
+                    altium_core::error::ErrorCode::Usage,
+                    format!("{rel} is already in the project"),
+                ));
             }
             if !resolve_ci(&p.dir, &rel).exists() {
-                return Err(Error::new(altium_core::error::ErrorCode::FileNotFound, format!("{} does not exist", document.display()))
-                    .hint("create the document first (in Altium, or copy a template)"));
+                return Err(Error::new(
+                    altium_core::error::ErrorCode::FileNotFound,
+                    format!("{} does not exist", document.display()),
+                )
+                .hint("create the document first (in Altium, or copy a template)"));
             }
-            let n = p.ini.numbered("Document").last().map(|(n, _)| n + 1).unwrap_or(1);
+            let n = p
+                .ini
+                .numbered("Document")
+                .last()
+                .map(|(n, _)| n + 1)
+                .unwrap_or(1);
             let mut s = altium_format::ini::Section::new(format!("Document{n}"));
             s.set("DocumentPath", &rel);
             s.set("AnnotationEnabled", "1");
@@ -286,43 +494,67 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
                 .map(|d| (d.index, d.rel.clone()))
                 .collect();
             match hit.as_slice() {
-                [] => Err(Error::not_found(format!("{document} is not in the project"))
-                    .hint("see `ace project documents`")),
+                [] => Err(
+                    Error::not_found(format!("{document} is not in the project"))
+                        .hint("see `ace project documents`"),
+                ),
                 [(n, rel)] => {
                     p.ini.sections.retain(|s| s.name != format!("Document{n}"));
                     renumber(&mut p.ini, "Document");
                     let backup = save(ctx, &path, &p.ini)?;
                     Out::new(json!({"removed": {"index": n, "rel": rel}, "backup": backup}))
                 }
-                many => Err(Error::new(altium_core::error::ErrorCode::Ambiguous, format!("{document} matches several documents"))
-                    .details(json!(many.iter().map(|(_, r)| r).collect::<Vec<_>>()))
-                    .hint("pass the relative path exactly as `project documents` shows it")),
+                many => Err(Error::new(
+                    altium_core::error::ErrorCode::Ambiguous,
+                    format!("{document} matches several documents"),
+                )
+                .details(json!(many.iter().map(|(_, r)| r).collect::<Vec<_>>()))
+                .hint("pass the relative path exactly as `project documents` shows it")),
             }
         }
-        ProjectCmd::AddVariant { project, name, allow_fabrication } => {
+        ProjectCmd::AddVariant {
+            project,
+            name,
+            allow_fabrication,
+        } => {
             let path = ctx.input(&project)?;
             let mut p = Project::load(&path)?;
             let used: Vec<String> = p.variants().iter().map(|v| v.unique_id.clone()).collect();
             let uid = new_uid(&name, &used);
             let n = p.add_variant(&name, &uid, allow_fabrication)?;
             let backup = save(ctx, &path, &p.ini)?;
-            Out::new(json!({"changed": true, "variant": {"index": n, "name": name,
+            Out::new(
+                json!({"changed": true, "variant": {"index": n, "name": name,
                 "unique_id": if ctx.dry_run { None } else { Some(uid) },
                 "unique_id_note": ctx.dry_run.then_some("assigned on apply; preview IDs are not reserved")},
                 "backup": backup, "verified": true,
-                "verification":{"candidate_reparsed":true,"written":!ctx.dry_run,"read_back":!ctx.dry_run}}))
+                "verification":{"candidate_reparsed":true,"written":!ctx.dry_run,"read_back":!ctx.dry_run}}),
+            )
         }
         ProjectCmd::RemoveVariant { project, variant } => {
             let path = ctx.input(&project)?;
             let mut p = Project::load(&path)?;
             let removed = p.remove_variant(&variant)?;
             let backup = save(ctx, &path, &p.ini)?;
-            Out::new(json!({"changed": true, "removed": removed, "backup": backup, "verified": true}))
+            Out::new(
+                json!({"changed": true, "removed": removed, "backup": backup, "verified": true}),
+            )
         }
-        ProjectCmd::SetVariation { project, variant, designator, fitted, alternate, unique_id } => {
+        ProjectCmd::SetVariation {
+            project,
+            variant,
+            designator,
+            fitted,
+            alternate,
+            unique_id,
+        } => {
             let path = ctx.input(&project)?;
             let mut p = Project::load(&path)?;
-            let before_typed = p.variant(&variant)?.variations.into_iter().find(|v| v.designator.eq_ignore_ascii_case(&designator));
+            let before_typed = p
+                .variant(&variant)?
+                .variations
+                .into_iter()
+                .find(|v| v.designator.eq_ignore_ascii_case(&designator));
             let (uid, source) = match unique_id {
                 Some(u) => (u, "argument"),
                 None => part_uid(&p, &designator)?,
@@ -334,31 +566,73 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
             };
             let (before, after) = p.set_variation(&variant, &designator, &uid, &kind)?;
             let changed = before.as_deref() != Some(after.as_str());
-            let backup = if changed { save(ctx, &path, &p.ini)? } else { None };
-            let after_typed = p.variant(&variant)?.variations.into_iter().find(|v| v.designator.eq_ignore_ascii_case(&designator));
-            Out::new(json!({"changed": changed, "variant": variant, "designator": designator,
+            let backup = if changed {
+                save(ctx, &path, &p.ini)?
+            } else {
+                None
+            };
+            let after_typed = p
+                .variant(&variant)?
+                .variations
+                .into_iter()
+                .find(|v| v.designator.eq_ignore_ascii_case(&designator));
+            Out::new(
+                json!({"changed": changed, "variant": variant, "designator": designator,
                             "before": before_typed, "after": after_typed, "raw":{"before":before,"after":after},
                             "unique_id_source": source, "backup": backup, "verified": true,
-                            "verification":{"candidate_reparsed":changed,"written":changed && !ctx.dry_run,"read_back":changed && !ctx.dry_run}}))
+                            "verification":{"candidate_reparsed":changed,"written":changed && !ctx.dry_run,"read_back":changed && !ctx.dry_run}}),
+            )
         }
-        ProjectCmd::SetVariantParam { project, variant, designator, name, value } => {
+        ProjectCmd::SetVariantParam {
+            project,
+            variant,
+            designator,
+            name,
+            value,
+        } => {
             let path = ctx.input(&project)?;
             let mut p = Project::load(&path)?;
             let before = p.set_param_variation(&variant, &designator, &name, &value)?;
             let changed = before.as_deref() != Some(value.as_str());
-            let backup = if changed { save(ctx, &path, &p.ini)? } else { None };
-            Out::new(json!({"changed": changed, "variant": variant, "designator": designator, "name": name, "before": before, "after": value, "backup": backup, "verified": true}))
+            let backup = if changed {
+                save(ctx, &path, &p.ini)?
+            } else {
+                None
+            };
+            Out::new(
+                json!({"changed": changed, "variant": variant, "designator": designator, "name": name, "before": before, "after": value, "backup": backup, "verified": true}),
+            )
         }
-        ProjectCmd::ClearVariation { project, variant, designator } => {
+        ProjectCmd::ClearVariation {
+            project,
+            variant,
+            designator,
+        } => {
             let path = ctx.input(&project)?;
             let mut p = Project::load(&path)?;
             let removed = p.clear_variation(&variant, &designator)?;
-            let backup = if removed > 0 { save(ctx, &path, &p.ini)? } else { None };
-            Out::new(json!({"changed": removed > 0, "removed": removed, "backup": backup, "verified": true}))
+            let backup = if removed > 0 {
+                save(ctx, &path, &p.ini)?
+            } else {
+                None
+            };
+            Out::new(
+                json!({"changed": removed > 0, "removed": removed, "backup": backup, "verified": true}),
+            )
         }
-        ProjectCmd::Find { dir, depth, include_hidden } => {
+        ProjectCmd::Find {
+            dir,
+            depth,
+            include_hidden,
+        } => {
             let mut found = vec![];
-            if !dir.is_dir() { return Err(Error::new(ErrorCode::FileNotFound, format!("{} is not a directory", dir.display())).hint("pass a directory to `ace project find`")); }
+            if !dir.is_dir() {
+                return Err(Error::new(
+                    ErrorCode::FileNotFound,
+                    format!("{} is not a directory", dir.display()),
+                )
+                .hint("pass a directory to `ace project find`"));
+            }
             find_projects(&dir, depth, include_hidden, &mut found);
             found.sort();
             let items: Vec<Value> = found
@@ -377,18 +651,30 @@ pub fn run(c: ProjectCmd, ctx: &Ctx) -> Result<Out> {
 /// read back as edited (and still load as a project) before it replaces the file.
 fn save(ctx: &Ctx, path: &Path, ini: &altium_format::ini::Ini) -> Result<Option<PathBuf>> {
     let bytes = ini.write_over(&std::fs::read(path)?)?;
-    Project::from_bytes(path, &bytes).map_err(|e| Error::new(ErrorCode::Unsafe, format!("the edited project does not load: {}", e.message)))?;
+    Project::from_bytes(path, &bytes).map_err(|e| {
+        Error::new(
+            ErrorCode::Unsafe,
+            format!("the edited project does not load: {}", e.message),
+        )
+    })?;
     let backup = ctx.write_file(path, &bytes)?;
     if !ctx.dry_run && std::fs::read(path)? != bytes {
-        return Err(Error::new(ErrorCode::Unsafe, "project on disk differs from the verified candidate")
-            .hint("inspect concurrent writers; keep the first .bak and restore if necessary"));
+        return Err(Error::new(
+            ErrorCode::Unsafe,
+            "project on disk differs from the verified candidate",
+        )
+        .hint("inspect concurrent writers; keep the first .bak and restore if necessary"));
     }
     Ok(backup)
 }
 
 /// A fresh 8-letter unique id not in `used`.
 fn new_uid(seed: &str, used: &[String]) -> String {
-    let mut x: u64 = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7) | 1;
+    let mut x: u64 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(7)
+        | 1;
     for b in seed.bytes() {
         x = x.wrapping_mul(0x100_0000_01B3) ^ b as u64;
     }
@@ -410,32 +696,51 @@ fn new_uid(seed: &str, used: &[String]) -> String {
 /// has the part, else `\<schematic unique id>`.
 fn part_uid(p: &Project, designator: &str) -> Result<(String, &'static str)> {
     for f in p.pcbs() {
-        let Ok(doc) = altium_doc::pcb::load_with(&f, &altium_doc::pcb::LoadOptions::parts(0)) else { continue };
+        let Ok(doc) = altium_doc::pcb::load_with(&f, &altium_doc::pcb::LoadOptions::parts(0))
+        else {
+            continue;
+        };
         if let Some(c) = doc.components.iter().find(|c| {
-            (c.source_designator.eq_ignore_ascii_case(designator) || c.designator.eq_ignore_ascii_case(designator)) && !c.source_unique_id.is_empty()
+            (c.source_designator.eq_ignore_ascii_case(designator)
+                || c.designator.eq_ignore_ascii_case(designator))
+                && !c.source_unique_id.is_empty()
         }) {
             return Ok((c.source_unique_id.clone(), "pcb"));
         }
     }
     if !p.schematics().is_empty() {
         let d = altium_doc::sch::project_design(p)?;
-        if let Some(part) = d.parts.iter().find(|x| x.designator.eq_ignore_ascii_case(designator)) {
+        if let Some(part) = d
+            .parts
+            .iter()
+            .find(|x| x.designator.eq_ignore_ascii_case(designator))
+        {
             if part.unique_id.is_empty() {
-                return Err(Error::new(ErrorCode::Unsafe, format!("{designator} has no unique id")).hint("pass --unique-id"));
+                return Err(Error::new(
+                    ErrorCode::Unsafe,
+                    format!("{designator} has no unique id"),
+                )
+                .hint("pass --unique-id"));
             }
             return Ok((format!("\\{}", part.unique_id), "schematic"));
         }
     }
-    Err(Error::not_found(format!("no part {designator} in the project's PCB or schematics"))
-        .hint("check `ace bom <project> --group-by designator`, or pass --unique-id"))
+    Err(Error::not_found(format!(
+        "no part {designator} in the project's PCB or schematics"
+    ))
+    .hint("check `ace bom <project> --group-by designator`, or pass --unique-id"))
 }
 
 fn find_projects(dir: &Path, depth: usize, include_hidden: bool, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.flatten() {
         let p = e.path();
         let name = e.file_name().to_string_lossy().into_owned();
-        if !include_hidden && (name.starts_with('.') || name == "__MACOSX") { continue; }
+        if !include_hidden && (name.starts_with('.') || name == "__MACOSX") {
+            continue;
+        }
         if p.is_dir() {
             if depth > 0 && name != "History" && name != "__Previews" {
                 find_projects(&p, depth - 1, include_hidden, out);
@@ -470,7 +775,11 @@ fn relative_windows(dir: &Path, doc: &Path) -> String {
     rel.to_string_lossy().replace('/', "\\")
 }
 
-fn insert_after_numbered(ini: &mut altium_format::ini::Ini, prefix: &str, s: altium_format::ini::Section) {
+fn insert_after_numbered(
+    ini: &mut altium_format::ini::Ini,
+    prefix: &str,
+    s: altium_format::ini::Section,
+) {
     let pos = ini
         .sections
         .iter()
@@ -500,7 +809,12 @@ pub fn info(file: &Path, ctx: &Ctx) -> Result<Out> {
         let e = by_kind.entry(k).or_insert(json!(0));
         *e = json!(e.as_u64().unwrap_or(0) + 1);
     }
-    let missing: Vec<&str> = p.documents.iter().filter(|d| !d.exists && !d.generated).map(|d| d.rel.as_str()).collect();
+    let missing: Vec<&str> = p
+        .documents
+        .iter()
+        .filter(|d| !d.exists && !d.generated)
+        .map(|d| d.rel.as_str())
+        .collect();
     let opt = |k: &str| p.design(k);
     let mut out = Out::new(json!({
         "name": p.name(),
@@ -522,7 +836,10 @@ pub fn info(file: &Path, ctx: &Ctx) -> Result<Out> {
         },
     }))?;
     if !missing.is_empty() {
-        out = out.warn(format!("{} referenced document(s) missing on disk", missing.len()));
+        out = out.warn(format!(
+            "{} referenced document(s) missing on disk",
+            missing.len()
+        ));
     }
     Ok(out)
 }

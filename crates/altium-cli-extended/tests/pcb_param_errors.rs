@@ -11,9 +11,30 @@ fn missing_component_unique_id_has_a_recovery_hint() {
     ] {
         let file = root.join(relative);
         let before = std::fs::read(&file).unwrap();
-        let error = err(&["pcb", "set-param", &s(&file), designator, "QA_NATIVE", "value", "--dry-run"], "UNSAFE");
-        assert!(error["error"]["message"].as_str().unwrap().contains("UNIQUEID"));
-        assert!(error["error"]["hint"].as_str().is_some_and(|h| h.contains("Altium")), "{error}");
+        let error = err(
+            &[
+                "pcb",
+                "set-param",
+                &s(&file),
+                designator,
+                "QA_NATIVE",
+                "value",
+                "--dry-run",
+            ],
+            "UNSAFE",
+        );
+        assert!(
+            error["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("UNIQUEID")
+        );
+        assert!(
+            error["error"]["hint"]
+                .as_str()
+                .is_some_and(|h| h.contains("Altium")),
+            "{error}"
+        );
         assert_eq!(std::fs::read(&file).unwrap(), before);
     }
 }

@@ -2,9 +2,9 @@
 
 mod commands;
 mod ctx;
-mod revision;
 mod meta;
 mod output;
+mod revision;
 
 use std::io::IsTerminal;
 use std::time::Instant;
@@ -13,8 +13,8 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde_json::{Value, json};
 
 use crate::ctx::Ctx;
-use altium_core::error::Error;
 use crate::output::{Filter, Out, Shape};
+use altium_core::error::Error;
 use altium_core::units::{self, Unit};
 
 use crate::commands as cmds;
@@ -180,13 +180,23 @@ fn want_json(args: &[std::ffi::OsString]) -> bool {
 }
 
 fn emit(v: &Value, pretty: bool) {
-    let s = if pretty { serde_json::to_string_pretty(v) } else { serde_json::to_string(v) };
-    output::write_stdout(&format!("{}\n", s.unwrap_or_else(|_| "{\"ok\":false}".into())));
+    let s = if pretty {
+        serde_json::to_string_pretty(v)
+    } else {
+        serde_json::to_string(v)
+    };
+    output::write_stdout(&format!(
+        "{}\n",
+        s.unwrap_or_else(|_| "{\"ok\":false}".into())
+    ));
 }
 
 fn fail(command: &str, e: &Error, json_mode: bool, pretty: bool) -> ! {
     if json_mode {
-        emit(&json!({"ok": false, "schema": output::SCHEMA, "command": command, "error": e}), pretty);
+        emit(
+            &json!({"ok": false, "schema": output::SCHEMA, "command": command, "error": e}),
+            pretty,
+        );
     } else {
         eprintln!("error: {}", e.message);
         if let Some(h) = &e.hint {
@@ -210,14 +220,21 @@ fn install_panic_hook() {
             return;
         }
         let payload = info.payload();
-        let message = payload.downcast_ref::<&str>().copied()
+        let message = payload
+            .downcast_ref::<&str>()
+            .copied()
             .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
             .unwrap_or("panic");
-        let location = info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()));
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()));
         let err = Error::new(altium_core::ErrorCode::Internal, format!("internal error: {message}"))
             .hint("bug in altium-cli-extended; please report with the command line and, if you can share it, the input file")
             .details(json!({"panic": message, "location": location}));
-        emit(&json!({"ok": false, "schema": output::SCHEMA, "command": "", "error": err}), pretty);
+        emit(
+            &json!({"ok": false, "schema": output::SCHEMA, "command": "", "error": err}),
+            pretty,
+        );
     }));
 }
 
@@ -225,7 +242,10 @@ fn main() {
     install_panic_hook();
     // Windows gives the main thread 1 MiB of stack, which debug builds of the record decoders
     // overflow; run the command on a thread with a stack that is large on every platform.
-    let worker = std::thread::Builder::new().stack_size(64 << 20).spawn(run).expect("spawn the main worker thread");
+    let worker = std::thread::Builder::new()
+        .stack_size(64 << 20)
+        .spawn(run)
+        .expect("spawn the main worker thread");
     if worker.join().is_err() {
         std::process::exit(altium_core::ErrorCode::Internal.exit_code());
     }
@@ -241,21 +261,35 @@ fn run() {
         Err(e) => {
             use clap::error::ErrorKind::*;
             if e.kind() == DisplayVersion && json_mode {
-                emit(&json!({"ok":true,"schema":output::SCHEMA,"command":"version",
+                emit(
+                    &json!({"ok":true,"schema":output::SCHEMA,"command":"version",
                     "data":{"tool":"ace","version":env!("CARGO_PKG_VERSION")},"warnings":[],
-                    "meta":{"version":env!("CARGO_PKG_VERSION")}}), pretty);
+                    "meta":{"version":env!("CARGO_PKG_VERSION")}}),
+                    pretty,
+                );
                 return;
             }
-            if matches!(e.kind(), DisplayHelp | DisplayVersion | DisplayHelpOnMissingArgumentOrSubcommand) {
+            if matches!(
+                e.kind(),
+                DisplayHelp | DisplayVersion | DisplayHelpOnMissingArgumentOrSubcommand
+            ) {
                 e.exit();
             }
             let msg = e.render().to_string();
             let recovery = "run `ace commands` for the full command list or `ace <command> --help`";
-            let hint = msg.lines().find_map(|line| line.trim().strip_prefix("tip: "))
-                .map(|tip| format!("{tip}; {recovery}")).unwrap_or_else(|| recovery.into());
-            let err = Error::usage(msg.lines().next().unwrap_or("bad arguments").trim_start_matches("error: "))
-                .hint(hint)
-                .details(json!({"clap": msg}));
+            let hint = msg
+                .lines()
+                .find_map(|line| line.trim().strip_prefix("tip: "))
+                .map(|tip| format!("{tip}; {recovery}"))
+                .unwrap_or_else(|| recovery.into());
+            let err = Error::usage(
+                msg.lines()
+                    .next()
+                    .unwrap_or("bad arguments")
+                    .trim_start_matches("error: "),
+            )
+            .hint(hint)
+            .details(json!({"clap": msg}));
             fail("", &err, json_mode, pretty);
         }
     };
@@ -267,7 +301,9 @@ fn run() {
     let g = cli.global.clone();
 
     let command_meta = meta::find(&path);
-    let mutating = command_meta.as_ref().is_some_and(|m| matches!(m.effect, meta::Effect::Write | meta::Effect::Control));
+    let mutating = command_meta
+        .as_ref()
+        .is_some_and(|m| matches!(m.effect, meta::Effect::Write | meta::Effect::Control));
     if g.read_only && mutating && !g.dry_run {
         fail(&path, &Error::new(altium_core::ErrorCode::Unsafe, "read-only session refuses a write/control operation")
             .hint("copy the project and unset ACE_READONLY / --read-only to edit; use --dry-run to preview"), json_mode, pretty);
@@ -289,7 +325,11 @@ fn run() {
         altium_format::props::trust_codepage();
     }
 
-    let mut shape = Shape { fields: g.fields.clone(), filters: vec![], limit: g.limit };
+    let mut shape = Shape {
+        fields: g.fields.clone(),
+        filters: vec![],
+        limit: g.limit,
+    };
     for f in &g.filters {
         match Filter::parse(f) {
             Ok(f) => shape.filters.push(f),
@@ -297,31 +337,51 @@ fn run() {
         }
     }
 
-    let ctx = Ctx { raw: g.raw, dry_run: g.dry_run, no_backup: g.no_backup, read_only: g.read_only };
+    let ctx = Ctx {
+        raw: g.raw,
+        dry_run: g.dry_run,
+        no_backup: g.no_backup,
+        read_only: g.read_only,
+    };
     let started = Instant::now();
-    let result: altium_core::Result<Out> = if g.read_only && mutating && g.dry_run
-        && command_meta.as_ref().is_some_and(|m| m.backend != meta::Backend::Native) {
+    let result: altium_core::Result<Out> = if g.read_only
+        && mutating
+        && g.dry_run
+        && command_meta
+            .as_ref()
+            .is_some_and(|m| m.backend != meta::Backend::Native)
+    {
         // A dry-run escape hatch must never contact a host that could execute arbitrary code.
         Out::new(json!({"dry_run": true, "executed": false, "command": path,
             "hint": "local preview only: read-only prevents contacting a mutating backend"}))
-    } else { match cli.cmd {
-        Cmd::Meta(c) => cmds::meta::run(c, &ctx),
-        Cmd::Raw(c) => cmds::raw::run(c, &ctx),
-        Cmd::Project(c) => cmds::project::run(c, &ctx),
-        Cmd::Outjob(c) => cmds::outjob::run(c, &ctx),
-        Cmd::Sch(c) => cmds::sch::run(c, &ctx),
-        Cmd::Schlib(c) => cmds::schlib::run(c, &ctx),
-        Cmd::Pcb(c) => cmds::pcb::run(c, &ctx),
-        Cmd::Pcblib(c) => cmds::pcblib::run(c, &ctx),
-        Cmd::Analysis(c) => cmds::analysis::run(c, &ctx),
-        Cmd::Designer(c) => cmds::designer::run(c, &ctx),
-    } };
+    } else {
+        match cli.cmd {
+            Cmd::Meta(c) => cmds::meta::run(c, &ctx),
+            Cmd::Raw(c) => cmds::raw::run(c, &ctx),
+            Cmd::Project(c) => cmds::project::run(c, &ctx),
+            Cmd::Outjob(c) => cmds::outjob::run(c, &ctx),
+            Cmd::Sch(c) => cmds::sch::run(c, &ctx),
+            Cmd::Schlib(c) => cmds::schlib::run(c, &ctx),
+            Cmd::Pcb(c) => cmds::pcb::run(c, &ctx),
+            Cmd::Pcblib(c) => cmds::pcblib::run(c, &ctx),
+            Cmd::Analysis(c) => cmds::analysis::run(c, &ctx),
+            Cmd::Designer(c) => cmds::designer::run(c, &ctx),
+        }
+    };
 
     match result {
         Ok(mut out) => {
             let exit_code = out.exit_code;
             if !json_mode && path == "bom" && shape.fields.is_empty() {
-                shape.fields = ["line", "quantity", "designator_ranges", "comment", "footprint"].map(str::to_owned).to_vec();
+                shape.fields = [
+                    "line",
+                    "quantity",
+                    "designator_ranges",
+                    "comment",
+                    "footprint",
+                ]
+                .map(str::to_owned)
+                .to_vec();
             }
             let (shape_warnings, similar) = shape.diagnostics(&out.data);
             out.warnings.extend(shape_warnings);
@@ -372,7 +432,9 @@ fn run() {
                     eprintln!("warning: {w}");
                 }
             }
-            if exit_code != 0 { std::process::exit(exit_code); }
+            if exit_code != 0 {
+                std::process::exit(exit_code);
+            }
         }
         Err(e) => fail(&path, &e, json_mode, pretty),
     }
@@ -387,14 +449,28 @@ mod tests {
     fn manifest_complete() {
         let leaves = cmds::meta::leaf_paths(&Cli::command());
         let metas = meta::all();
-        let missing: Vec<_> = leaves.iter().filter(|p| !metas.iter().any(|m| &m.path == p)).collect();
-        assert!(missing.is_empty(), "commands without META rows: {missing:?}");
-        let orphan: Vec<_> = metas.iter().filter(|m| !leaves.contains(&m.path.to_owned())).map(|m| m.path).collect();
+        let missing: Vec<_> = leaves
+            .iter()
+            .filter(|p| !metas.iter().any(|m| &m.path == p))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "commands without META rows: {missing:?}"
+        );
+        let orphan: Vec<_> = metas
+            .iter()
+            .filter(|m| !leaves.contains(&m.path.to_owned()))
+            .map(|m| m.path)
+            .collect();
         assert!(orphan.is_empty(), "META rows without commands: {orphan:?}");
         let mut seen = std::collections::HashSet::new();
         for m in &metas {
             assert!(seen.insert(m.path), "duplicate META row {}", m.path);
-            assert!(m.example.starts_with("ace "), "example for {} must start with `ace `", m.path);
+            assert!(
+                m.example.starts_with("ace "),
+                "example for {} must start with `ace `",
+                m.path
+            );
         }
     }
 
@@ -406,7 +482,8 @@ mod tests {
     #[test]
     fn error_names_unique() {
         use altium_core::ErrorCode;
-        let names: std::collections::HashSet<_> = ErrorCode::all().iter().map(|c| c.name()).collect();
+        let names: std::collections::HashSet<_> =
+            ErrorCode::all().iter().map(|c| c.name()).collect();
         assert_eq!(names.len(), ErrorCode::all().len());
     }
 }

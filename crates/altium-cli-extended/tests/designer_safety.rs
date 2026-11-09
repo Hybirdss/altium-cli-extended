@@ -1,12 +1,17 @@
-use std::process::Command;
 use serde_json::Value;
+use std::process::Command;
 
 fn invoke(args: &[&str]) -> (bool, Value) {
     // No valid designer configuration: a dry run must finish before connecting or staging.
     let dir = std::env::temp_dir().join(format!("ace-designer-safety-{}", std::process::id()));
-    let out = Command::new(env!("CARGO_BIN_EXE_ace")).args(args)
-        .env("XDG_CONFIG_HOME", &dir).env("APPDATA", &dir).output().unwrap();
-    let json = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    let out = Command::new(env!("CARGO_BIN_EXE_ace"))
+        .args(args)
+        .env("XDG_CONFIG_HOME", &dir)
+        .env("APPDATA", &dir)
+        .output()
+        .unwrap();
+    let json = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     (out.status.success(), json)
 }
 
@@ -39,6 +44,11 @@ fn opaque_writes_require_explicit_backup_opt_out() {
         let (ok, json) = invoke(&args);
         assert!(!ok);
         assert_eq!(json["error"]["code"], "UNSAFE");
-        assert!(json["error"]["hint"].as_str().unwrap().contains("--no-backup"));
+        assert!(
+            json["error"]["hint"]
+                .as_str()
+                .unwrap()
+                .contains("--no-backup")
+        );
     }
 }

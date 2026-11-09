@@ -69,7 +69,14 @@ impl Report {
     pub fn summary(&self) -> String {
         self.modal()
             .iter()
-            .map(|w| format!("{}: {} [{}]", w.title, w.texts.join(" "), w.buttons.join("|")))
+            .map(|w| {
+                format!(
+                    "{}: {} [{}]",
+                    w.title,
+                    w.texts.join(" "),
+                    w.buttons.join("|")
+                )
+            })
             .collect::<Vec<_>>()
             .join("; ")
     }
@@ -179,8 +186,12 @@ fn run(host: &dyn Host, press: &str) -> Result<Report> {
 
 pub fn parse(raw: &[u8]) -> Result<Report> {
     let text = crate::bridge::decode_text(raw);
-    let mut v: serde_json::Value = serde_json::from_str(text.trim())
-        .map_err(|e| Error::new(ErrorCode::DesignerFailed, format!("dialog helper wrote invalid JSON: {e}")))?;
+    let mut v: serde_json::Value = serde_json::from_str(text.trim()).map_err(|e| {
+        Error::new(
+            ErrorCode::DesignerFailed,
+            format!("dialog helper wrote invalid JSON: {e}"),
+        )
+    })?;
     // ConvertTo-Json writes a one-element array as an object and an empty one as null.
     if let Some(w) = v.get_mut("windows") {
         if w.is_object() {
@@ -200,7 +211,8 @@ pub fn parse(raw: &[u8]) -> Result<Report> {
             }
         }
     }
-    serde_json::from_value(v).map_err(|e| Error::new(ErrorCode::DesignerFailed, format!("dialog helper: {e}")))
+    serde_json::from_value(v)
+        .map_err(|e| Error::new(ErrorCode::DesignerFailed, format!("dialog helper: {e}")))
 }
 
 /// What Altium shows right now.
@@ -225,7 +237,10 @@ mod tests {
         assert_eq!(r.windows.len(), 1);
         assert_eq!(r.windows[0].buttons, vec!["OK"]);
         assert_eq!(r.summary(), "Error: Undeclared identifier: X [OK]");
-        let r = parse(br#"{"running":false,"main_title":"","blocked":false,"windows":null,"pressed":null}"#).unwrap();
+        let r = parse(
+            br#"{"running":false,"main_title":"","blocked":false,"windows":null,"pressed":null}"#,
+        )
+        .unwrap();
         assert!(r.windows.is_empty() && r.modal().is_empty());
     }
 }

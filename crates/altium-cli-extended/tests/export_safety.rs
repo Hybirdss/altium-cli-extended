@@ -14,7 +14,10 @@ fn exports_refuse_design_paths_even_in_dry_run() {
     let victim = dir.join("victim.PcbDoc");
     std::fs::write(&victim, b"do not overwrite").unwrap();
     for dry in [false, true] {
-        let l = s(&lib); let p = s(&pcb); let sh = s(&sch); let d = s(&dir);
+        let l = s(&lib);
+        let p = s(&pcb);
+        let sh = s(&sch);
+        let d = s(&dir);
         for mut args in [
             vec!["pcblib", "svg", &l, "A", "--out", &l],
             vec!["pcb", "svg", &p, "--out", &p],
@@ -23,10 +26,18 @@ fn exports_refuse_design_paths_even_in_dry_run() {
             vec!["pcb", "models", &p, "--extract", &d],
             vec!["sch", "images", &sh, "--extract", &d],
         ] {
-            let before: Vec<_> = [&lib, &pcb, &sch, &victim].iter().map(|p| std::fs::read(p).unwrap()).collect();
-            if dry { args.push("--dry-run"); }
+            let before: Vec<_> = [&lib, &pcb, &sch, &victim]
+                .iter()
+                .map(|p| std::fs::read(p).unwrap())
+                .collect();
+            if dry {
+                args.push("--dry-run");
+            }
             err(&args, "UNSAFE");
-            let after: Vec<_> = [&lib, &pcb, &sch, &victim].iter().map(|p| std::fs::read(p).unwrap()).collect();
+            let after: Vec<_> = [&lib, &pcb, &sch, &victim]
+                .iter()
+                .map(|p| std::fs::read(p).unwrap())
+                .collect();
             assert_eq!(before, after, "{args:?}");
         }
     }
@@ -40,7 +51,20 @@ fn exports_refuse_design_paths_even_in_dry_run() {
 fn image_names_stay_inside_output_and_avoid_windows_devices() {
     let dir = tempdir("image-names");
     let file = dir.join("S.SchDoc");
-    support::sch(&file, &["C:evil.png", "CON.png", "NUL", "COM1.step", "LPT9.txt", "name. ", "..", "a.png", "A.PNG"]);
+    support::sch(
+        &file,
+        &[
+            "C:evil.png",
+            "CON.png",
+            "NUL",
+            "COM1.step",
+            "LPT9.txt",
+            "name. ",
+            "..",
+            "a.png",
+            "A.PNG",
+        ],
+    );
     let out = dir.join("images");
     let data = ok(&["sch", "images", &s(&file), "--extract", &s(&out)]);
     let paths = data["extracted"].as_array().unwrap();
@@ -51,7 +75,17 @@ fn image_names_stay_inside_output_and_avoid_windows_devices() {
         assert_eq!(p.parent(), Some(out.as_path()));
         let name = p.file_name().unwrap().to_str().unwrap();
         assert!(!name.contains(':') && !name.ends_with(['.', ' ']));
-        assert!(!["CON", "NUL", "COM1", "LPT9"].contains(&name.split('.').next().unwrap().to_ascii_uppercase().as_str()), "{name}");
+        assert!(
+            !["CON", "NUL", "COM1", "LPT9"].contains(
+                &name
+                    .split('.')
+                    .next()
+                    .unwrap()
+                    .to_ascii_uppercase()
+                    .as_str()
+            ),
+            "{name}"
+        );
         assert!(names.insert(name.to_ascii_lowercase()));
         assert_eq!(std::fs::read(p).unwrap(), b"image");
     }

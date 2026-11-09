@@ -8,8 +8,13 @@ fn first_backup_survives_many_writes_and_restores_exact_bytes() {
     let file = copy_to(&root.join("BeagleBoneCape/BeagleBoneCape.SchDoc"), &dir);
     let f = s(&file);
     let pristine = std::fs::read(&file).unwrap();
-    for v in ["one", "two", "three"] { ok(&["sch", "set-param", &f, "P8", "QA", v]); }
-    assert_eq!(std::fs::read(dir.join("BeagleBoneCape.SchDoc.bak")).unwrap(), pristine);
+    for v in ["one", "two", "three"] {
+        ok(&["sch", "set-param", &f, "P8", "QA", v]);
+    }
+    assert_eq!(
+        std::fs::read(dir.join("BeagleBoneCape.SchDoc.bak")).unwrap(),
+        pristine
+    );
     let edited = std::fs::read(&file).unwrap();
     let recovery = dir.join("BeagleBoneCape.SchDoc.pre-restore");
     let d = ok(&["restore", &f, "--from", "first", "--dry-run"]);
@@ -25,7 +30,10 @@ fn first_backup_survives_many_writes_and_restores_exact_bytes() {
     assert_eq!(ok(&["restore", &f])["verified"]["read_back"], true);
     assert_eq!(std::fs::read(&file).unwrap(), pristine);
     assert_eq!(std::fs::read(&recovery).unwrap(), edited);
-    assert_eq!(std::fs::read(dir.join("BeagleBoneCape.SchDoc.bak")).unwrap(), pristine);
+    assert_eq!(
+        std::fs::read(dir.join("BeagleBoneCape.SchDoc.bak")).unwrap(),
+        pristine
+    );
     assert_eq!(ok(&["restore", &f])["changed"], false);
     assert_eq!(std::fs::read(&recovery).unwrap(), edited);
     std::fs::write(dir.join("BeagleBoneCape.SchDoc.bak"), b"invalid").unwrap();

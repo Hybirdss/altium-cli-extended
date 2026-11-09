@@ -107,7 +107,14 @@ pub fn natural_key(s: &str) -> Vec<(String, u64)> {
             text.push(ch.to_ascii_uppercase());
         }
     }
-    out.push((text, if num.is_empty() { 0 } else { num.parse().unwrap_or(u64::MAX) }));
+    out.push((
+        text,
+        if num.is_empty() {
+            0
+        } else {
+            num.parse().unwrap_or(u64::MAX)
+        },
+    ));
     out
 }
 
@@ -146,7 +153,9 @@ pub(crate) struct Uf {
 
 impl Uf {
     pub fn new(n: usize) -> Uf {
-        Uf { p: (0..n).collect() }
+        Uf {
+            p: (0..n).collect(),
+        }
     }
     pub fn find(&mut self, mut x: usize) -> usize {
         while self.p[x] != x {
@@ -205,7 +214,11 @@ impl BusGroup {
             .iter()
             .map(|&i| doc.net_labels[i].name.clone())
             .chain(self.ports.iter().map(|&i| doc.ports[i].name.clone()))
-            .chain(self.sheet_entries.iter().map(|&(s, e)| doc.sheet_symbols[s].entries[e].name.clone()));
+            .chain(
+                self.sheet_entries
+                    .iter()
+                    .map(|&(s, e)| doc.sheet_symbols[s].entries[e].name.clone()),
+            );
         for n in all {
             for m in expand_bus(&n).unwrap_or_default() {
                 if !names.iter().any(|x| x.eq_ignore_ascii_case(&m)) {
@@ -394,7 +407,11 @@ pub fn graph(doc: &SchDoc) -> SheetGraph {
         let g = group_of(&mut uf, wi, &mut groups);
         groups[g].wires.push(wi);
     }
-    let dangling_wires = groups.iter().filter(|g| g.is_empty()).map(|g| g.wires.len()).sum();
+    let dangling_wires = groups
+        .iter()
+        .filter(|g| g.is_empty())
+        .map(|g| g.wires.len())
+        .sum();
     groups.retain(|g| !g.is_empty());
 
     // Bus groups.
@@ -433,7 +450,11 @@ pub fn graph(doc: &SchDoc) -> SheetGraph {
             _ => {}
         }
     }
-    SheetGraph { groups, bus_groups, dangling_wires }
+    SheetGraph {
+        groups,
+        bus_groups,
+        dangling_wires,
+    }
 }
 
 /// One candidate name for a net.
@@ -448,17 +469,36 @@ pub struct NameCandidate {
 
 /// Name candidates contributed by a group, given the options.
 pub fn candidates(doc: &SchDoc, g: &Group, opts: &NetOptions, depth: usize) -> Vec<NameCandidate> {
-    let (label_p, power_p) = if opts.power_port_names_take_priority { (2, 1) } else { (1, 2) };
+    let (label_p, power_p) = if opts.power_port_names_take_priority {
+        (2, 1)
+    } else {
+        (1, 2)
+    };
     let mut v = Vec::new();
     for &i in &g.net_labels {
-        v.push(NameCandidate { priority: label_p, depth, name: doc.net_labels[i].name.clone(), source: "net-label" });
+        v.push(NameCandidate {
+            priority: label_p,
+            depth,
+            name: doc.net_labels[i].name.clone(),
+            source: "net-label",
+        });
     }
     for &i in &g.power_ports {
-        v.push(NameCandidate { priority: power_p, depth, name: doc.power_ports[i].name.clone(), source: "power-port" });
+        v.push(NameCandidate {
+            priority: power_p,
+            depth,
+            name: doc.power_ports[i].name.clone(),
+            source: "power-port",
+        });
     }
     if opts.allow_port_net_names {
         for &i in &g.ports {
-            v.push(NameCandidate { priority: 3, depth, name: doc.ports[i].name.clone(), source: "port" });
+            v.push(NameCandidate {
+                priority: 3,
+                depth,
+                name: doc.ports[i].name.clone(),
+                source: "port",
+            });
         }
     }
     if opts.allow_sheet_entry_net_names {
@@ -479,7 +519,11 @@ pub fn candidates(doc: &SchDoc, g: &Group, opts: &NetOptions, depth: usize) -> V
 /// higher-level names take priority), then alphabetical.
 pub fn pick(cands: &[NameCandidate]) -> Option<&NameCandidate> {
     cands.iter().min_by(|a, b| {
-        (a.priority, a.depth, natural_key(&a.name)).cmp(&(b.priority, b.depth, natural_key(&b.name)))
+        (a.priority, a.depth, natural_key(&a.name)).cmp(&(
+            b.priority,
+            b.depth,
+            natural_key(&b.name),
+        ))
     })
 }
 
@@ -487,7 +531,9 @@ pub fn pick(cands: &[NameCandidate]) -> Option<&NameCandidate> {
 pub fn auto_name(nodes: &[(String, String)]) -> Option<String> {
     nodes
         .iter()
-        .min_by(|a, b| (natural_key(&a.0), natural_key(&a.1)).cmp(&(natural_key(&b.0), natural_key(&b.1))))
+        .min_by(|a, b| {
+            (natural_key(&a.0), natural_key(&a.1)).cmp(&(natural_key(&b.0), natural_key(&b.1)))
+        })
         .map(|(d, p)| format!("Net{d}_{p}"))
 }
 
@@ -542,7 +588,9 @@ pub fn group_nodes(doc: &SchDoc, g: &Group) -> Vec<SheetNode> {
                 pin: pin.designator.clone(),
                 pin_name: pin.name.clone(),
                 pin_record: pin.index,
-                pads: Some(comp.pads_for(&pin.designator)).filter(|p| p.len() != 1 || p[0] != pin.designator).unwrap_or_default(),
+                pads: Some(comp.pads_for(&pin.designator))
+                    .filter(|p| p.len() != 1 || p[0] != pin.designator)
+                    .unwrap_or_default(),
             }
         })
         .collect();
@@ -558,13 +606,19 @@ fn uniq(mut v: Vec<String>) -> Vec<String> {
 }
 
 /// Sheet-scope name of a group: `(name, auto_named, name_source, candidates)`.
-pub fn name_of(doc: &SchDoc, g: &Group, opts: &NetOptions) -> (String, bool, String, Vec<NameCandidate>) {
+pub fn name_of(
+    doc: &SchDoc,
+    g: &Group,
+    opts: &NetOptions,
+) -> (String, bool, String, Vec<NameCandidate>) {
     let cands = candidates(doc, g, opts, 0);
     if let Some(c) = pick(&cands) {
         return (c.name.clone(), false, c.source.to_owned(), cands);
     }
-    let pairs: Vec<(String, String)> =
-        group_nodes(doc, g).iter().map(|n| (n.designator.clone(), n.pin.clone())).collect();
+    let pairs: Vec<(String, String)> = group_nodes(doc, g)
+        .iter()
+        .map(|n| (n.designator.clone(), n.pin.clone()))
+        .collect();
     match auto_name(&pairs) {
         Some(n) => (n, true, "pin".to_owned(), cands),
         // No pins: the group only links connectors (e.g. a port wired to a sheet entry).
@@ -573,7 +627,12 @@ pub fn name_of(doc: &SchDoc, g: &Group, opts: &NetOptions) -> (String, bool, Str
             if let Some(&p) = g.ports.first() {
                 (doc.ports[p].name.clone(), true, "port".to_owned(), cands)
             } else if let Some(&(s, e)) = g.sheet_entries.first() {
-                (doc.sheet_symbols[s].entries[e].name.clone(), true, "sheet-entry".to_owned(), cands)
+                (
+                    doc.sheet_symbols[s].entries[e].name.clone(),
+                    true,
+                    "sheet-entry".to_owned(),
+                    cands,
+                )
             } else {
                 let w = g.wires.first().map(|&w| doc.wires[w].index).unwrap_or(0);
                 (format!("Net_W{w}"), true, "wire".to_owned(), cands)
@@ -588,19 +647,40 @@ pub fn sheet_nets(doc: &SchDoc, graph: &SheetGraph, opts: &NetOptions) -> Vec<Sh
     for g in &graph.groups {
         let nodes = group_nodes(doc, g);
         let (name, auto, source, cands) = name_of(doc, g, opts);
-        let other_names = uniq(cands.iter().map(|c| c.name.clone()).filter(|n| !n.eq_ignore_ascii_case(&name)).collect());
+        let other_names = uniq(
+            cands
+                .iter()
+                .map(|c| c.name.clone())
+                .filter(|n| !n.eq_ignore_ascii_case(&name))
+                .collect(),
+        );
         out.push(SheetNet {
             name,
             auto_named: auto,
             name_source: source,
             nodes,
-            net_labels: uniq(g.net_labels.iter().map(|&i| doc.net_labels[i].name.clone()).collect()),
-            power_ports: uniq(g.power_ports.iter().map(|&i| doc.power_ports[i].name.clone()).collect()),
+            net_labels: uniq(
+                g.net_labels
+                    .iter()
+                    .map(|&i| doc.net_labels[i].name.clone())
+                    .collect(),
+            ),
+            power_ports: uniq(
+                g.power_ports
+                    .iter()
+                    .map(|&i| doc.power_ports[i].name.clone())
+                    .collect(),
+            ),
             ports: uniq(g.ports.iter().map(|&i| doc.ports[i].name.clone()).collect()),
             sheet_entries: uniq(
                 g.sheet_entries
                     .iter()
-                    .map(|&(s, e)| format!("{}/{}", doc.sheet_symbols[s].sheet_name, doc.sheet_symbols[s].entries[e].name))
+                    .map(|&(s, e)| {
+                        format!(
+                            "{}/{}",
+                            doc.sheet_symbols[s].sheet_name, doc.sheet_symbols[s].entries[e].name
+                        )
+                    })
                     .collect(),
             ),
             other_names,
@@ -614,7 +694,11 @@ pub fn sheet_nets(doc: &SchDoc, graph: &SheetGraph, opts: &NetOptions) -> Vec<Sh
 /// Fill the `net` fields of the document's objects with sheet-scope net names.
 pub fn annotate(doc: &mut SchDoc, opts: &NetOptions) {
     let g = graph(doc);
-    let names: Vec<String> = g.groups.iter().map(|grp| name_of(doc, grp, opts).0).collect();
+    let names: Vec<String> = g
+        .groups
+        .iter()
+        .map(|grp| name_of(doc, grp, opts).0)
+        .collect();
     for (gi, grp) in g.groups.iter().enumerate() {
         let n = Some(names[gi].clone());
         for &(c, p) in &grp.pins {
@@ -640,7 +724,11 @@ pub fn annotate(doc: &mut SchDoc, opts: &NetOptions) {
         }
     }
     for bg in &g.bus_groups {
-        let labels: Vec<String> = bg.net_labels.iter().map(|&i| doc.net_labels[i].name.clone()).collect();
+        let labels: Vec<String> = bg
+            .net_labels
+            .iter()
+            .map(|&i| doc.net_labels[i].name.clone())
+            .collect();
         for &i in &bg.net_labels {
             doc.net_labels[i].on_bus = true;
         }
@@ -656,13 +744,17 @@ pub fn annotate(doc: &mut SchDoc, opts: &NetOptions) {
     }
     // Point objects that are not conductors: look up the net under them.
     let wire_net = |pt: Point, doc: &SchDoc| -> Option<String> {
-        doc.wires.iter().find(|w| on_polyline(pt, &w.points)).and_then(|w| w.net.clone()).or_else(|| {
-            doc.components
-                .iter()
-                .flat_map(|c| c.pins.iter())
-                .find(|p| p.hot_end == pt)
-                .and_then(|p| p.net.clone())
-        })
+        doc.wires
+            .iter()
+            .find(|w| on_polyline(pt, &w.points))
+            .and_then(|w| w.net.clone())
+            .or_else(|| {
+                doc.components
+                    .iter()
+                    .flat_map(|c| c.pins.iter())
+                    .find(|p| p.hot_end == pt)
+                    .and_then(|p| p.net.clone())
+            })
     };
     for i in 0..doc.no_ercs.len() {
         doc.no_ercs[i].net = wire_net(doc.no_ercs[i].location, doc);
@@ -684,13 +776,25 @@ pub fn annotate(doc: &mut SchDoc, opts: &NetOptions) {
     let unresolved: Vec<String> = g
         .bus_groups
         .iter()
-        .flat_map(|bg| bg.net_labels.iter().map(|&i| doc.net_labels[i].name.clone()))
+        .flat_map(|bg| {
+            bg.net_labels
+                .iter()
+                .map(|&i| doc.net_labels[i].name.clone())
+        })
         .filter(|n| expand_bus(n).is_none())
         .collect();
     if !unresolved.is_empty() {
-        doc.warnings.push(format!("net labels on buses that are not bus names (left unresolved): {}", unresolved.join(", ")));
+        doc.warnings.push(format!(
+            "net labels on buses that are not bus names (left unresolved): {}",
+            unresolved.join(", ")
+        ));
     }
-    let hidden = doc.components.iter().flat_map(|c| c.pins.iter()).filter(|p| p.hidden).count();
+    let hidden = doc
+        .components
+        .iter()
+        .flat_map(|c| c.pins.iter())
+        .filter(|p| p.hidden)
+        .count();
     if hidden > 0 {
         doc.warnings.push(format!(
             "{hidden} hidden pin(s): Altium may tie hidden pins to a named net; native connectivity only uses their hot end"
@@ -727,10 +831,22 @@ mod tests {
 
     #[test]
     fn naming() {
-        let c = |p, d, n: &str, s| NameCandidate { priority: p, depth: d, name: n.into(), source: s };
-        let cands = vec![c(4, 0, "ENTRY", "sheet-entry"), c(1, 1, "LBL_B", "net-label"), c(1, 1, "LBL_A", "net-label")];
+        let c = |p, d, n: &str, s| NameCandidate {
+            priority: p,
+            depth: d,
+            name: n.into(),
+            source: s,
+        };
+        let cands = vec![
+            c(4, 0, "ENTRY", "sheet-entry"),
+            c(1, 1, "LBL_B", "net-label"),
+            c(1, 1, "LBL_A", "net-label"),
+        ];
         assert_eq!(pick(&cands).unwrap().name, "LBL_A");
-        let nodes = vec![("R10".to_string(), "1".to_string()), ("R9".to_string(), "2".to_string())];
+        let nodes = vec![
+            ("R10".to_string(), "1".to_string()),
+            ("R9".to_string(), "2".to_string()),
+        ];
         assert_eq!(auto_name(&nodes).unwrap(), "NetR9_2");
         assert!(natural_key("R10") > natural_key("R9"));
     }

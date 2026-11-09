@@ -45,9 +45,25 @@ pub struct Finding {
 }
 
 /// Build a finding; scope and hint come from [`CODES`].
-pub fn finding(severity: Severity, code: &'static str, message: String, refs: Vec<String>) -> Finding {
-    let (scope, hint) = CODES.iter().find(|c| c.0 == code).map(|c| (c.1, c.3)).unwrap_or(("project", ""));
-    Finding { severity, code, message, refs, scope, hint }
+pub fn finding(
+    severity: Severity,
+    code: &'static str,
+    message: String,
+    refs: Vec<String>,
+) -> Finding {
+    let (scope, hint) = CODES
+        .iter()
+        .find(|c| c.0 == code)
+        .map(|c| (c.1, c.3))
+        .unwrap_or(("project", ""));
+    Finding {
+        severity,
+        code,
+        message,
+        refs,
+        scope,
+        hint,
+    }
 }
 
 fn f(severity: Severity, code: &'static str, message: String, refs: Vec<String>) -> Finding {
@@ -56,45 +72,121 @@ fn f(severity: Severity, code: &'static str, message: String, refs: Vec<String>)
 
 /// Every check: `(code, scope, meaning, fix hint)` (for `ace check --list`).
 pub const CODES: &[(&str, &str, &str, &str)] = &[
-    ("incomplete-project", "project", "design documents are missing; results are partial and sync is skipped",
-     "restore the files listed in refs; inspect `ace project documents <project>` before trusting BOM or sync"),
-    ("missing-document", "project", "the project references a document that is not on disk",
-     "restore the file or drop the entry with `ace project remove-document`"),
-    ("unannotated", "design", "designator still contains '?'",
-     "annotate in Altium (`ace designer process Sch:Annotate`) or set it with `ace sch set-designator`"),
-    ("duplicate-designator", "design", "two parts share a designator",
-     "rename one with `ace sch set-designator`, then update the PCB from the schematic"),
-    ("missing-footprint", "design", "part has no footprint model",
-     "add a footprint model in Altium; `ace sch set-footprint` can only rename an existing one"),
-    ("empty-comment", "design", "part has no comment/value", "set it with `ace sch set-comment`"),
-    ("missing-parameter", "design", "part lacks a parameter named in --require",
-     "add it with `ace sch set-param <sheet> <designator> <name> <value>`"),
-    ("single-node-net", "design", "named net with only one connection (often a typo in a net label)",
-     "check the net label spelling (`ace sch net-labels`) or connect the second pin"),
-    ("node-in-several-nets", "design", "the same pin appears in two nets",
-     "two nets are shorted through one pin; inspect with `ace netlist <input> --pins --where designator=<ref>`"),
-    ("missing-in-pcb", "sync", "schematic part has no PCB component",
-     "update the PCB from the schematic in Altium (Design > Update PCB Document)"),
-    ("missing-in-schematic", "sync", "PCB component has no schematic part (and is not mechanical/graphical)",
-     "delete it from the PCB, add it to the schematic, or make it a Mechanical/Graphical component"),
-    ("unique-id-mismatch", "sync", "schematic and PCB parts share a designator but not the unique id that links them",
-     "re-link with Altium's Component Links dialog (Project > Component Links) before updating the PCB"),
-    ("designator-mismatch", "sync", "a linked schematic part and PCB component have different designators",
-     "annotate both sides the same way: change the schematic (`ace sch set-designator`) and update the PCB, or back-annotate from the PCB in Altium"),
-    ("footprint-mismatch", "sync", "schematic footprint differs from the PCB pattern",
-     "fix the schematic with `ace sch set-footprint`, then update the PCB in Altium"),
-    ("comment-mismatch", "sync", "schematic comment differs from the PCB comment",
-     "set the schematic comment (`ace sch set-comment`) and update the PCB, or ignore an intentional difference"),
-    ("net-mismatch", "sync", "one schematic net is split across several PCB nets",
-     "update the PCB from the schematic; see `ace diff <project> <pcb>`"),
-    ("nets-merged-in-pcb", "sync", "several schematic nets are one PCB net",
-     "update the PCB from the schematic; a PCB-only net assignment shorts them"),
-    ("pin-unrouted-in-pcb", "sync", "a schematic net node's PCB pad has no net",
-     "update the PCB from the schematic so the pad gets its net"),
+    (
+        "incomplete-project",
+        "project",
+        "design documents are missing; results are partial and sync is skipped",
+        "restore the files listed in refs; inspect `ace project documents <project>` before trusting BOM or sync",
+    ),
+    (
+        "missing-document",
+        "project",
+        "the project references a document that is not on disk",
+        "restore the file or drop the entry with `ace project remove-document`",
+    ),
+    (
+        "unannotated",
+        "design",
+        "designator still contains '?'",
+        "annotate in Altium (`ace designer process Sch:Annotate`) or set it with `ace sch set-designator`",
+    ),
+    (
+        "duplicate-designator",
+        "design",
+        "two parts share a designator",
+        "rename one with `ace sch set-designator`, then update the PCB from the schematic",
+    ),
+    (
+        "missing-footprint",
+        "design",
+        "part has no footprint model",
+        "add a footprint model in Altium; `ace sch set-footprint` can only rename an existing one",
+    ),
+    (
+        "empty-comment",
+        "design",
+        "part has no comment/value",
+        "set it with `ace sch set-comment`",
+    ),
+    (
+        "missing-parameter",
+        "design",
+        "part lacks a parameter named in --require",
+        "add it with `ace sch set-param <sheet> <designator> <name> <value>`",
+    ),
+    (
+        "single-node-net",
+        "design",
+        "named net with only one connection (often a typo in a net label)",
+        "check the net label spelling (`ace sch net-labels`) or connect the second pin",
+    ),
+    (
+        "node-in-several-nets",
+        "design",
+        "the same pin appears in two nets",
+        "two nets are shorted through one pin; inspect with `ace netlist <input> --pins --where designator=<ref>`",
+    ),
+    (
+        "missing-in-pcb",
+        "sync",
+        "schematic part has no PCB component",
+        "update the PCB from the schematic in Altium (Design > Update PCB Document)",
+    ),
+    (
+        "missing-in-schematic",
+        "sync",
+        "PCB component has no schematic part (and is not mechanical/graphical)",
+        "delete it from the PCB, add it to the schematic, or make it a Mechanical/Graphical component",
+    ),
+    (
+        "unique-id-mismatch",
+        "sync",
+        "schematic and PCB parts share a designator but not the unique id that links them",
+        "re-link with Altium's Component Links dialog (Project > Component Links) before updating the PCB",
+    ),
+    (
+        "designator-mismatch",
+        "sync",
+        "a linked schematic part and PCB component have different designators",
+        "annotate both sides the same way: change the schematic (`ace sch set-designator`) and update the PCB, or back-annotate from the PCB in Altium",
+    ),
+    (
+        "footprint-mismatch",
+        "sync",
+        "schematic footprint differs from the PCB pattern",
+        "fix the schematic with `ace sch set-footprint`, then update the PCB in Altium",
+    ),
+    (
+        "comment-mismatch",
+        "sync",
+        "schematic comment differs from the PCB comment",
+        "set the schematic comment (`ace sch set-comment`) and update the PCB, or ignore an intentional difference",
+    ),
+    (
+        "net-mismatch",
+        "sync",
+        "one schematic net is split across several PCB nets",
+        "update the PCB from the schematic; see `ace diff <project> <pcb>`",
+    ),
+    (
+        "nets-merged-in-pcb",
+        "sync",
+        "several schematic nets are one PCB net",
+        "update the PCB from the schematic; a PCB-only net assignment shorts them",
+    ),
+    (
+        "pin-unrouted-in-pcb",
+        "sync",
+        "a schematic net node's PCB pad has no net",
+        "update the PCB from the schematic so the pad gets its net",
+    ),
 ];
 
 fn graphical(p: &Part) -> bool {
-    matches!(p.kind.to_ascii_lowercase().as_str(), "graphical" | "mechanical" | "jumper" | "net tie")
+    matches!(
+        p.kind.to_ascii_lowercase().as_str(),
+        "graphical" | "mechanical" | "jumper" | "net tie"
+    )
 }
 
 fn part_checks(d: &Design, out: &mut Vec<Finding>) {
@@ -102,20 +194,44 @@ fn part_checks(d: &Design, out: &mut Vec<Finding>) {
     for p in &d.parts {
         *seen.entry(p.designator.to_ascii_uppercase()).or_default() += 1;
         if designator::unannotated(&p.designator) {
-            out.push(f(Severity::Error, "unannotated", format!("{} ({}) is not annotated", p.designator, d.source), vec![p.designator.clone()]));
+            out.push(f(
+                Severity::Error,
+                "unannotated",
+                format!("{} ({}) is not annotated", p.designator, d.source),
+                vec![p.designator.clone()],
+            ));
         }
         if p.footprint.trim().is_empty() && !graphical(p) {
-            out.push(f(Severity::Warning, "missing-footprint", format!("{} has no footprint ({})", p.designator, d.source), vec![p.designator.clone()]));
+            out.push(f(
+                Severity::Warning,
+                "missing-footprint",
+                format!("{} has no footprint ({})", p.designator, d.source),
+                vec![p.designator.clone()],
+            ));
         }
         if p.comment.trim().is_empty() && !graphical(p) {
-            out.push(f(Severity::Info, "empty-comment", format!("{} has an empty comment ({})", p.designator, d.source), vec![p.designator.clone()]));
+            out.push(f(
+                Severity::Info,
+                "empty-comment",
+                format!("{} has an empty comment ({})", p.designator, d.source),
+                vec![p.designator.clone()],
+            ));
         }
     }
-    let mut dups: Vec<String> = seen.into_iter().filter(|(_, n)| *n > 1).map(|(k, _)| k).collect();
+    let mut dups: Vec<String> = seen
+        .into_iter()
+        .filter(|(_, n)| *n > 1)
+        .map(|(k, _)| k)
+        .collect();
     designator::sort(&mut dups);
     for dsg in dups {
         if !designator::unannotated(&dsg) {
-            out.push(f(Severity::Error, "duplicate-designator", format!("{dsg} is used more than once ({})", d.source), vec![dsg]));
+            out.push(f(
+                Severity::Error,
+                "duplicate-designator",
+                format!("{dsg} is used more than once ({})", d.source),
+                vec![dsg],
+            ));
         }
     }
 }
@@ -123,7 +239,11 @@ fn part_checks(d: &Design, out: &mut Vec<Finding>) {
 fn net_checks(d: &Design, out: &mut Vec<Finding>) {
     let mut owner: HashMap<(String, String), Vec<String>> = HashMap::new();
     for n in &d.nets {
-        let uniq: HashSet<(&str, &str)> = n.nodes.iter().map(|x| (x.designator.as_str(), x.pin.as_str())).collect();
+        let uniq: HashSet<(&str, &str)> = n
+            .nodes
+            .iter()
+            .map(|x| (x.designator.as_str(), x.pin.as_str()))
+            .collect();
         if uniq.len() == 1 && !n.auto_named {
             out.push(f(
                 Severity::Warning,
@@ -133,7 +253,10 @@ fn net_checks(d: &Design, out: &mut Vec<Finding>) {
             ));
         }
         for (des, pin) in uniq {
-            owner.entry((des.to_owned(), pin.to_owned())).or_default().push(n.name.clone());
+            owner
+                .entry((des.to_owned(), pin.to_owned()))
+                .or_default()
+                .push(n.name.clone());
         }
     }
     let mut multi: Vec<_> = owner.into_iter().filter(|(_, v)| v.len() > 1).collect();
@@ -143,8 +266,14 @@ fn net_checks(d: &Design, out: &mut Vec<Finding>) {
         out.push(f(
             Severity::Error,
             "node-in-several-nets",
-            format!("{des}.{pin} is in several nets: {} ({})", nets.join(", "), d.source),
-            std::iter::once(format!("{des}.{pin}")).chain(nets).collect(),
+            format!(
+                "{des}.{pin} is in several nets: {} ({})",
+                nets.join(", "),
+                d.source
+            ),
+            std::iter::once(format!("{des}.{pin}"))
+                .chain(nets)
+                .collect(),
         ));
     }
 }
@@ -174,7 +303,9 @@ fn link(sch: &Design, pcb: &Design) -> Vec<(usize, usize)> {
         m
     };
     let (su, pu) = (uid_count(sch), uid_count(pcb));
-    let unique = |p: &Part, m: &HashMap<String, usize>| !p.unique_id.is_empty() && m.get(&p.unique_id.to_ascii_uppercase()) == Some(&1);
+    let unique = |p: &Part, m: &HashMap<String, usize>| {
+        !p.unique_id.is_empty() && m.get(&p.unique_id.to_ascii_uppercase()) == Some(&1)
+    };
     let mut pairs = vec![];
     let mut used_pcb: HashSet<usize> = HashSet::new();
     let mut used_sch: HashSet<usize> = HashSet::new();
@@ -182,14 +313,23 @@ fn link(sch: &Design, pcb: &Design) -> Vec<(usize, usize)> {
         if !unique(p, &su) {
             continue;
         }
-        if let Some(j) = pcb.parts.iter().position(|q| unique(q, &pu) && q.unique_id.eq_ignore_ascii_case(&p.unique_id)) {
+        if let Some(j) = pcb
+            .parts
+            .iter()
+            .position(|q| unique(q, &pu) && q.unique_id.eq_ignore_ascii_case(&p.unique_id))
+        {
             pairs.push((i, j));
             used_pcb.insert(j);
             used_sch.insert(i);
         }
     }
-    let by_des: HashMap<String, usize> =
-        pcb.parts.iter().enumerate().filter(|(j, _)| !used_pcb.contains(j)).map(|(j, q)| (q.designator.to_ascii_uppercase(), j)).collect();
+    let by_des: HashMap<String, usize> = pcb
+        .parts
+        .iter()
+        .enumerate()
+        .filter(|(j, _)| !used_pcb.contains(j))
+        .map(|(j, q)| (q.designator.to_ascii_uppercase(), j))
+        .collect();
     for (i, p) in sch.parts.iter().enumerate() {
         if used_sch.contains(&i) {
             continue;
@@ -210,7 +350,10 @@ fn sync_checks(sch: &Design, pcb: &Design, out: &mut Vec<Finding>) {
     // PCB designator -> schematic designator, for comparing nets pin by pin.
     let mut rename: HashMap<String, String> = HashMap::new();
     for &(i, j) in &pairs {
-        rename.insert(pcb.parts[j].designator.to_ascii_uppercase(), sch.parts[i].designator.to_ascii_uppercase());
+        rename.insert(
+            pcb.parts[j].designator.to_ascii_uppercase(),
+            sch.parts[i].designator.to_ascii_uppercase(),
+        );
     }
     let mut sch_order: Vec<usize> = (0..sch.parts.len()).collect();
     sch_order.sort_by(|&a, &b| designator::cmp(&sch.parts[a].designator, &sch.parts[b].designator));
@@ -222,7 +365,12 @@ fn sync_checks(sch: &Design, pcb: &Design, out: &mut Vec<Finding>) {
         match pcb_of.get(&i).map(|&j| &pcb.parts[j]) {
             None => {
                 if !p.footprint.is_empty() {
-                    out.push(f(Severity::Error, "missing-in-pcb", format!("{} is in the schematic but not on the PCB", p.designator), vec![p.designator.clone()]));
+                    out.push(f(
+                        Severity::Error,
+                        "missing-in-pcb",
+                        format!("{} is in the schematic but not on the PCB", p.designator),
+                        vec![p.designator.clone()],
+                    ));
                 }
             }
             Some(q) => {
@@ -233,19 +381,31 @@ fn sync_checks(sch: &Design, pcb: &Design, out: &mut Vec<Finding>) {
                         format!("schematic {} is linked to PCB component {} (designator changed on one side)", p.designator, q.designator),
                         vec![p.designator.clone(), q.designator.clone()],
                     ));
-                } else if !p.unique_id.is_empty() && !q.unique_id.is_empty() && !p.unique_id.eq_ignore_ascii_case(&q.unique_id) {
+                } else if !p.unique_id.is_empty()
+                    && !q.unique_id.is_empty()
+                    && !p.unique_id.eq_ignore_ascii_case(&q.unique_id)
+                {
                     out.push(f(
                         Severity::Warning,
                         "unique-id-mismatch",
-                        format!("{}: schematic unique id {} vs PCB link {}", p.designator, p.unique_id, q.unique_id),
+                        format!(
+                            "{}: schematic unique id {} vs PCB link {}",
+                            p.designator, p.unique_id, q.unique_id
+                        ),
                         vec![p.designator.clone()],
                     ));
                 }
-                if !p.footprint.is_empty() && !q.footprint.is_empty() && !p.footprint.eq_ignore_ascii_case(&q.footprint) {
+                if !p.footprint.is_empty()
+                    && !q.footprint.is_empty()
+                    && !p.footprint.eq_ignore_ascii_case(&q.footprint)
+                {
                     out.push(f(
                         Severity::Warning,
                         "footprint-mismatch",
-                        format!("{}: schematic footprint {:?} vs PCB {:?}", p.designator, p.footprint, q.footprint),
+                        format!(
+                            "{}: schematic footprint {:?} vs PCB {:?}",
+                            p.designator, p.footprint, q.footprint
+                        ),
                         vec![p.designator.clone()],
                     ));
                 }
@@ -253,7 +413,10 @@ fn sync_checks(sch: &Design, pcb: &Design, out: &mut Vec<Finding>) {
                     out.push(f(
                         Severity::Info,
                         "comment-mismatch",
-                        format!("{}: schematic comment {:?} vs PCB {:?}", p.designator, p.comment, q.comment),
+                        format!(
+                            "{}: schematic comment {:?} vs PCB {:?}",
+                            p.designator, p.comment, q.comment
+                        ),
                         vec![p.designator.clone()],
                     ));
                 }
@@ -265,8 +428,10 @@ fn sync_checks(sch: &Design, pcb: &Design, out: &mut Vec<Finding>) {
     for j in pcb_order {
         let q = &pcb.parts[j];
         // `#N` = a PCB component without a designator text (logos and the like).
-        let free = matches!(q.kind.to_ascii_lowercase().as_str(), "mechanical" | "graphical")
-            || q.designator.is_empty()
+        let free = matches!(
+            q.kind.to_ascii_lowercase().as_str(),
+            "mechanical" | "graphical"
+        ) || q.designator.is_empty()
             || q.designator.starts_with('#');
         if !linked_pcb.contains(&j) && !free {
             out.push(f(
@@ -285,7 +450,13 @@ fn sync_checks(sch: &Design, pcb: &Design, out: &mut Vec<Finding>) {
     let mut unrouted: Vec<(&(String, String), &String)> = vec![];
     for (node, sn) in &sp {
         match pp.get(node) {
-            Some(pn) => *name_map.entry(sn.as_str()).or_default().entry(pn.as_str()).or_default() += 1,
+            Some(pn) => {
+                *name_map
+                    .entry(sn.as_str())
+                    .or_default()
+                    .entry(pn.as_str())
+                    .or_default() += 1
+            }
             None => {
                 if linked_sch.contains(&node.0) {
                     unrouted.push((node, sn));
@@ -298,7 +469,10 @@ fn sync_checks(sch: &Design, pcb: &Design, out: &mut Vec<Finding>) {
         out.push(f(
             Severity::Warning,
             "pin-unrouted-in-pcb",
-            format!("{}.{} is on net {sn} in the schematic but its PCB pad has no net", node.0, node.1),
+            format!(
+                "{}.{} is on net {sn} in the schematic but its PCB pad has no net",
+                node.0, node.1
+            ),
             vec![format!("{}.{}", node.0, node.1), sn.clone()],
         ));
     }
@@ -323,7 +497,10 @@ fn sync_checks(sch: &Design, pcb: &Design, out: &mut Vec<Finding>) {
         out.push(f(
             Severity::Error,
             "net-mismatch",
-            format!("schematic net {sn} is split across PCB nets {}", pcb_nets.join(", ")),
+            format!(
+                "schematic net {sn} is split across PCB nets {}",
+                pcb_nets.join(", ")
+            ),
             std::iter::once(sn.to_owned()).chain(pcb_nets).collect(),
         ));
     }
@@ -344,7 +521,9 @@ fn required_params(d: &Design, require: &[String], out: &mut Vec<Finding>) {
                 "comment" => !p.comment.trim().is_empty(),
                 "footprint" => !p.footprint.trim().is_empty(),
                 "description" => !p.description.trim().is_empty(),
-                _ => p.param(name).is_some_and(|v| !v.trim().is_empty() && v.trim() != "*"),
+                _ => p
+                    .param(name)
+                    .is_some_and(|v| !v.trim().is_empty() && v.trim() != "*"),
             };
             if !has {
                 out.push(f(
@@ -389,30 +568,55 @@ pub fn run_with(sch: Option<&Design>, pcb: Option<&Design>, opts: &CheckOptions)
 
 /// Compare persisted findings by scope, code, severity and sorted references. Messages may
 /// change between runs without inventing a new violation. A severity increase is new.
-pub fn baseline_delta(before: &[serde_json::Value], after: &[serde_json::Value]) -> altium_core::Result<serde_json::Value> {
+pub fn baseline_delta(
+    before: &[serde_json::Value],
+    after: &[serde_json::Value],
+) -> altium_core::Result<serde_json::Value> {
     use altium_core::Error;
     use serde_json::{Value, json};
     fn keyed(rows: &[Value]) -> altium_core::Result<BTreeMap<String, Value>> {
         let mut map = BTreeMap::new();
         for row in rows {
-            let invalid = || Error::usage("baseline findings must retain code, scope, severity and refs")
-                .hint("save a complete `ace check PROJECT` JSON envelope without --fields, --where or --limit");
-            let mut refs: Vec<&str> = row["refs"].as_array().ok_or_else(invalid)?.iter()
-                .map(|r| r.as_str().ok_or_else(invalid)).collect::<altium_core::Result<_>>()?;
+            let invalid = || {
+                Error::usage("baseline findings must retain code, scope, severity and refs")
+                .hint("save a complete `ace check PROJECT` JSON envelope without --fields, --where or --limit")
+            };
+            let mut refs: Vec<&str> = row["refs"]
+                .as_array()
+                .ok_or_else(invalid)?
+                .iter()
+                .map(|r| r.as_str().ok_or_else(invalid))
+                .collect::<altium_core::Result<_>>()?;
             refs.sort();
             let severity = row["severity"].as_str().ok_or_else(invalid)?;
-            if Severity::parse(severity).is_none() { return Err(invalid()); }
-            let key = serde_json::to_string(&(row["scope"].as_str().ok_or_else(invalid)?,
-                row["code"].as_str().ok_or_else(invalid)?, severity, refs))?;
+            if Severity::parse(severity).is_none() {
+                return Err(invalid());
+            }
+            let key = serde_json::to_string(&(
+                row["scope"].as_str().ok_or_else(invalid)?,
+                row["code"].as_str().ok_or_else(invalid)?,
+                severity,
+                refs,
+            ))?;
             map.insert(key, row.clone());
         }
         Ok(map)
     }
     let (before, after) = (keyed(before)?, keyed(after)?);
-    let new: Vec<_> = after.iter().filter(|(key, _)| !before.contains_key(*key)).map(|(_, v)| v).collect();
-    let resolved: Vec<_> = before.iter().filter(|(key, _)| !after.contains_key(*key)).map(|(_, v)| v).collect();
+    let new: Vec<_> = after
+        .iter()
+        .filter(|(key, _)| !before.contains_key(*key))
+        .map(|(_, v)| v)
+        .collect();
+    let resolved: Vec<_> = before
+        .iter()
+        .filter(|(key, _)| !after.contains_key(*key))
+        .map(|(_, v)| v)
+        .collect();
     let unchanged = after.keys().filter(|key| before.contains_key(*key)).count();
-    Ok(json!({"new":new,"resolved":resolved,"unchanged":unchanged,"passed_vs_baseline":new.is_empty()}))
+    Ok(
+        json!({"new":new,"resolved":resolved,"unchanged":unchanged,"passed_vs_baseline":new.is_empty()}),
+    )
 }
 
 #[cfg(test)]
@@ -421,12 +625,24 @@ mod tests {
     use altium_doc::model::{Net, Node};
 
     fn part(d: &str, fp: &str) -> Part {
-        Part { designator: d.into(), footprint: fp.into(), comment: "x".into(), ..Default::default() }
+        Part {
+            designator: d.into(),
+            footprint: fp.into(),
+            comment: "x".into(),
+            ..Default::default()
+        }
     }
     fn net(name: &str, nodes: &[(&str, &str)]) -> Net {
         Net {
             name: name.into(),
-            nodes: nodes.iter().map(|(d, p)| Node { designator: d.to_string(), pin: p.to_string(), pin_name: String::new() }).collect(),
+            nodes: nodes
+                .iter()
+                .map(|(d, p)| Node {
+                    designator: d.to_string(),
+                    pin: p.to_string(),
+                    pin_name: String::new(),
+                })
+                .collect(),
             ..Default::default()
         }
     }
@@ -435,7 +651,12 @@ mod tests {
     fn sync() {
         let sch = Design {
             source: "schematic".into(),
-            parts: vec![part("R1", "0603"), part("R2", "0603"), part("R?", "0603"), part("R4", "0603")],
+            parts: vec![
+                part("R1", "0603"),
+                part("R2", "0603"),
+                part("R?", "0603"),
+                part("R4", "0603"),
+            ],
             nets: vec![
                 net("VCC", &[("R1", "1"), ("R2", "1")]),
                 net("LONELY", &[("R1", "2")]),
@@ -446,19 +667,48 @@ mod tests {
         };
         let pcb = Design {
             source: "pcb".into(),
-            parts: vec![part("R1", "0805"), part("R3", "0603"), part("R4", "0603"), part("#7", "LOGO")],
-            nets: vec![net("VCC", &[("R1", "1")]), net("N2", &[("R2", "1")]), net("AB", &[("R4", "1"), ("R4", "2")])],
+            parts: vec![
+                part("R1", "0805"),
+                part("R3", "0603"),
+                part("R4", "0603"),
+                part("#7", "LOGO"),
+            ],
+            nets: vec![
+                net("VCC", &[("R1", "1")]),
+                net("N2", &[("R2", "1")]),
+                net("AB", &[("R4", "1"), ("R4", "2")]),
+            ],
             ..Default::default()
         };
         let all = run(Some(&sch), Some(&pcb));
         let codes: Vec<&str> = all.iter().map(|f| f.code).collect();
-        for c in ["unannotated", "single-node-net", "missing-in-pcb", "missing-in-schematic", "footprint-mismatch", "pin-unrouted-in-pcb", "nets-merged-in-pcb"] {
+        for c in [
+            "unannotated",
+            "single-node-net",
+            "missing-in-pcb",
+            "missing-in-schematic",
+            "footprint-mismatch",
+            "pin-unrouted-in-pcb",
+            "nets-merged-in-pcb",
+        ] {
             assert!(codes.contains(&c), "{c} missing from {codes:?}");
         }
-        assert!(!all.iter().any(|f| f.refs.contains(&"#7".to_owned())), "designator-less PCB parts are not reported");
+        assert!(
+            !all.iter().any(|f| f.refs.contains(&"#7".to_owned())),
+            "designator-less PCB parts are not reported"
+        );
         assert!(CODES.iter().all(|c| !c.0.is_empty() && !c.3.is_empty()));
-        assert!(all.iter().all(|x| !x.hint.is_empty()), "every finding has a hint");
-        let r = run_with(Some(&sch), None, &CheckOptions { require: vec!["MPN".into()] });
+        assert!(
+            all.iter().all(|x| !x.hint.is_empty()),
+            "every finding has a hint"
+        );
+        let r = run_with(
+            Some(&sch),
+            None,
+            &CheckOptions {
+                require: vec!["MPN".into()],
+            },
+        );
         assert!(r.iter().any(|x| x.code == "missing-parameter"));
     }
 }

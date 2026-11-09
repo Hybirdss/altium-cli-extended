@@ -12,10 +12,16 @@ use altium_doc::schlib;
 /// `.fixtures/samples` of the workspace, or of an enclosing checkout (git worktrees live
 /// inside the main checkout), or `$ACE_FIXTURES`.
 fn samples() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("ACE_FIXTURES").map(PathBuf::from).filter(|p| p.is_dir()) {
+    if let Some(p) = std::env::var_os("ACE_FIXTURES")
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+    {
         return Some(p);
     }
-    Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().map(|a| a.join(".fixtures/samples")).find(|p| p.is_dir())
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .map(|a| a.join(".fixtures/samples"))
+        .find(|p| p.is_dir())
 }
 
 macro_rules! need {
@@ -45,7 +51,11 @@ fn all_with_ext(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
 }
 
 fn with_codepage<T>(path: &Path, f: impl FnOnce() -> T) -> T {
-    let cp = if path.to_string_lossy().contains("quasar") { "windows-1251" } else { "windows-1252" };
+    let cp = if path.to_string_lossy().contains("quasar") {
+        "windows-1251"
+    } else {
+        "windows-1252"
+    };
     altium_format::props::set_codepage(cp);
     let r = f();
     altium_format::props::set_codepage("windows-1252");
@@ -60,7 +70,8 @@ fn every_schdoc_parses() {
     assert_eq!(files.len(), 43);
     let mut components = 0;
     for f in &files {
-        let d = with_codepage(f, || sch::load(f)).unwrap_or_else(|e| panic!("{}: {e}", f.display()));
+        let d =
+            with_codepage(f, || sch::load(f)).unwrap_or_else(|e| panic!("{}: {e}", f.display()));
         assert!(d.sheet.is_some(), "{}: no sheet record", f.display());
         for w in &d.warnings {
             assert!(
@@ -124,7 +135,11 @@ fn multipart_components() {
     assert_eq!(d.find_components("U101B").unwrap().len(), 1);
     assert!(d.find_components("U999").is_err());
     let design = sch::design_of(&d, &connect::NetOptions::default());
-    let part = design.parts.iter().find(|p| p.designator == "U101").unwrap();
+    let part = design
+        .parts
+        .iter()
+        .find(|p| p.designator == "U101")
+        .unwrap();
     assert_eq!(part.units, vec!["A", "B"]);
 }
 
@@ -150,13 +165,55 @@ fn hierarchy_and_scope() {
 fn project_nets_match_pcb() {
     let s = need!();
     let cases = [
-        ("AirPi_PCB/AirPi_Power/AirPi_Power.PrjPcb", sproj::Scope::Hierarchical, 29, 8, 44),
-        ("AirPi_PCB/AirPi_Sensor/AirPi_Sensor.PrjPcb", sproj::Scope::Hierarchical, 91, 31, 68),
-        ("PilotPi_PCB/PilotPi_Power/PilotPi_Power.PrjPcb", sproj::Scope::Hierarchical, 42, 10, 44),
-        ("PilotPi_PCB/PilotPi_Sensors/PilotPi_Sensors.PrjPcb", sproj::Scope::Hierarchical, 96, 35, 79),
-        ("PilotPi_PCB/I2C_Expander/I2C_Expander.PrjPcb", sproj::Scope::Global, 4, 0, 8),
-        ("quasar_arm_pcb/Quasar ARM.PrjPcb", sproj::Scope::Flat, 105, 83, 157),
-        ("BeagleBoneCape/BeagleBoneCape.PrjPcb", sproj::Scope::Global, 2, 0, 3),
+        (
+            "AirPi_PCB/AirPi_Power/AirPi_Power.PrjPcb",
+            sproj::Scope::Hierarchical,
+            29,
+            8,
+            44,
+        ),
+        (
+            "AirPi_PCB/AirPi_Sensor/AirPi_Sensor.PrjPcb",
+            sproj::Scope::Hierarchical,
+            91,
+            31,
+            68,
+        ),
+        (
+            "PilotPi_PCB/PilotPi_Power/PilotPi_Power.PrjPcb",
+            sproj::Scope::Hierarchical,
+            42,
+            10,
+            44,
+        ),
+        (
+            "PilotPi_PCB/PilotPi_Sensors/PilotPi_Sensors.PrjPcb",
+            sproj::Scope::Hierarchical,
+            96,
+            35,
+            79,
+        ),
+        (
+            "PilotPi_PCB/I2C_Expander/I2C_Expander.PrjPcb",
+            sproj::Scope::Global,
+            4,
+            0,
+            8,
+        ),
+        (
+            "quasar_arm_pcb/Quasar ARM.PrjPcb",
+            sproj::Scope::Flat,
+            105,
+            83,
+            157,
+        ),
+        (
+            "BeagleBoneCape/BeagleBoneCape.PrjPcb",
+            sproj::Scope::Global,
+            2,
+            0,
+            3,
+        ),
     ];
     for (rel, scope, nets, auto, parts) in cases {
         let path = s.join(rel);
@@ -164,7 +221,11 @@ fn project_nets_match_pcb() {
         let n = with_codepage(&path, || sproj::netlist(&p)).unwrap();
         assert_eq!(n.scope, scope, "{rel}");
         assert_eq!(n.nets.len(), nets, "{rel}");
-        assert_eq!(n.nets.iter().filter(|x| x.auto_named).count(), auto, "{rel}");
+        assert_eq!(
+            n.nets.iter().filter(|x| x.auto_named).count(),
+            auto,
+            "{rel}"
+        );
         assert_eq!(n.parts.len(), parts, "{rel}");
     }
 }
@@ -174,10 +235,19 @@ fn cross_sheet_naming() {
     let s = need!();
     let p = Project::load(&s.join("PilotPi_PCB/PilotPi_Sensors/PilotPi_Sensors.PrjPcb")).unwrap();
     let n = sproj::netlist(&p).unwrap();
-    let get = |name: &str| n.nets.iter().find(|x| x.name == name).unwrap_or_else(|| panic!("no net {name}"));
+    let get = |name: &str| {
+        n.nets
+            .iter()
+            .find(|x| x.name == name)
+            .unwrap_or_else(|| panic!("no net {name}"))
+    };
     // Labelled SPI1CE0_BCM18 on the top sheet and CSN in the child: the PCB calls it CSN.
     let csn = get("CSN");
-    let nodes: Vec<(&str, &str)> = csn.nodes.iter().map(|x| (x.designator.as_str(), x.pin.as_str())).collect();
+    let nodes: Vec<(&str, &str)> = csn
+        .nodes
+        .iter()
+        .map(|x| (x.designator.as_str(), x.pin.as_str()))
+        .collect();
     assert_eq!(nodes, vec![("JP_RPi", "12"), ("U7", "10")]);
     assert_eq!(csn.sheets.len(), 2);
     assert!(csn.other_names.iter().any(|x| x == "SPI1CE0_BCM18"));
@@ -190,7 +260,11 @@ fn cross_sheet_naming() {
     let d = sproj::project_design(&p2).unwrap();
     assert_eq!(d.source, "schematic");
     let v5 = d.nets.iter().find(|x| x.name == "5V").unwrap();
-    assert!(v5.nodes.iter().any(|x| x.designator == "FAN0" && x.pin == "7" && x.pin_name == "5V"));
+    assert!(
+        v5.nodes
+            .iter()
+            .any(|x| x.designator == "FAN0" && x.pin == "7" && x.pin_name == "5V")
+    );
     // Sheet-entry-only nets keep automatic names (NetC2_2 in the PCB, not VIN).
     assert!(d.nets.iter().any(|x| x.name == "NetC2_2" && x.auto_named));
     assert!(!d.nets.iter().any(|x| x.name == "VIN"));
@@ -219,7 +293,11 @@ fn bus_ports_join_members() {
     assert_eq!(top.bus_entries[0].net.as_deref(), Some("PWM0"));
     let p = Project::load(&s.join("AirPi_PCB/AirPi_Sensor/AirPi_Sensor.PrjPcb")).unwrap();
     let n = sproj::netlist(&p).unwrap();
-    assert!(!n.warnings.iter().any(|w| w.contains("no sheet entry")), "{:?}", n.warnings);
+    assert!(
+        !n.warnings.iter().any(|w| w.contains("no sheet entry")),
+        "{:?}",
+        n.warnings
+    );
     let pwm0 = n.nets.iter().find(|x| x.name == "PWM0").unwrap();
     assert_eq!(pwm0.sheets.len(), 2, "{pwm0:?}");
 }
@@ -250,8 +328,20 @@ fn schlib_symbols() {
     assert_eq!(cat.pins[0].pin.electrical, "passive");
     assert_eq!(cat.footprint.as_deref(), Some("SOIC-8"));
     assert_eq!(cat.designator.as_deref(), Some("U?"));
-    assert_eq!(cat.pins[0].extra.get("SYMBOL_LINEWIDTH").map(String::as_str), Some("0"));
-    assert_eq!(cat.primitives.iter().filter(|p| p.kind == "rectangle").count(), 1);
+    assert_eq!(
+        cat.pins[0]
+            .extra
+            .get("SYMBOL_LINEWIDTH")
+            .map(String::as_str),
+        Some("0")
+    );
+    assert_eq!(
+        cat.primitives
+            .iter()
+            .filter(|p| p.kind == "rectangle")
+            .count(),
+        1
+    );
 
     let q = s.join("quasar_arm_pcb/Quasar ARM.SCHLIB");
     let ql = with_codepage(&q, || schlib::load(&q)).unwrap();
@@ -259,7 +349,12 @@ fn schlib_symbols() {
     assert_eq!(ql.symbols.iter().map(|s| s.pins.len()).sum::<usize>(), 227);
     assert!(ql.warnings.is_empty(), "{:?}", ql.warnings);
     // Long name through SectionKeys; '/' replaced in the storage name.
-    assert_eq!(ql.symbol("Elrctro-Magnetic Sound Generator").unwrap().storage, "Elrctro-Magnetic Sound Generato");
+    assert_eq!(
+        ql.symbol("Elrctro-Magnetic Sound Generator")
+            .unwrap()
+            .storage,
+        "Elrctro-Magnetic Sound Generato"
+    );
     let op = ql.symbol("MCP6022-I/SN").unwrap();
     assert_eq!(op.storage, "MCP6022-I_SN");
     assert_eq!(op.part_count, 2);
@@ -282,7 +377,10 @@ fn edits_roundtrip() {
     let n = edit::verify(&d, &b, &ch).unwrap();
     let u2 = &n.find_components("U2").unwrap()[0];
     assert_eq!(u2.param("Supplier").unwrap().value, "Digi-Key");
-    assert_eq!(u2.param("ComponentLink1Description").unwrap().value, "供应商链接");
+    assert_eq!(
+        u2.param("ComponentLink1Description").unwrap().value,
+        "供应商链接"
+    );
 
     // A non-ASCII value would put windows-1252 next to GBK in one sheet.
     let e = edit::set_param(&d, "U2", "Note", "é ok").unwrap_err();
@@ -297,13 +395,22 @@ fn edits_roundtrip() {
     let n = edit::verify(&d, &b, &ch).unwrap();
     assert_eq!(n.records.len(), d.records.len() + 1);
     assert_eq!(n.header.int("WEIGHT"), Some(d.records.len() as i64 + 1));
-    assert_eq!(n.find_components("U2").unwrap()[0].param("Note").unwrap().value, "é ok");
+    assert_eq!(
+        n.find_components("U2").unwrap()[0]
+            .param("Note")
+            .unwrap()
+            .value,
+        "é ok"
+    );
 
     // Footprint, designator, comment, sheet parameter.
     let (b, ch) = edit::set_footprint(&d, "L2", "CDRH127-NEW").unwrap();
     assert_eq!(ch.len(), 2);
     let n = edit::verify(&d, &b, &ch).unwrap();
-    assert_eq!(n.find_components("L2").unwrap()[0].footprint.as_deref(), Some("CDRH127-NEW"));
+    assert_eq!(
+        n.find_components("L2").unwrap()[0].footprint.as_deref(),
+        Some("CDRH127-NEW")
+    );
     assert!(edit::set_designator(&d, "L2", "D2").is_err());
     let (b, ch) = edit::set_designator(&d, "L2", "L20").unwrap();
     edit::verify(&d, &b, &ch).unwrap();
@@ -317,7 +424,11 @@ fn edits_roundtrip() {
     let (b, ch, renumbered) = edit::remove_param(&d, "U2", "Notepad").unwrap();
     assert!(renumbered > 400);
     let n = edit::verify(&d, &b, &ch).unwrap();
-    assert!(n.find_components("U2").unwrap()[0].param("Notepad").is_none());
+    assert!(
+        n.find_components("U2").unwrap()[0]
+            .param("Notepad")
+            .is_none()
+    );
     let before = connect::sheet_nets(&d, &connect::graph(&d), &Default::default());
     let after = connect::sheet_nets(&n, &connect::graph(&n), &Default::default());
     assert_eq!(before.len(), after.len());

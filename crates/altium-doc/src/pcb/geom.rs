@@ -103,7 +103,9 @@ impl BBoxAcc {
 pub fn vertices_from_props(p: &Props) -> Vec<Vertex> {
     let mut out = vec![];
     for i in 0.. {
-        let (Some(x), Some(y)) = (p.len(&format!("VX{i}")), p.len(&format!("VY{i}"))) else { break };
+        let (Some(x), Some(y)) = (p.len(&format!("VX{i}")), p.len(&format!("VY{i}"))) else {
+            break;
+        };
         let arc = (p.int(&format!("KIND{i}")).unwrap_or(0) != 0).then(|| VertexArc {
             center: Point::new(
                 p.len(&format!("CX{i}")).unwrap_or_default(),
@@ -148,7 +150,11 @@ fn arc_edge(from: (f64, f64), to: (f64, f64), a: &VertexArc, out: &mut Vec<(f64,
     }
     // Traverse CCW from SA when `from` sits at the start angle, otherwise CW from EA.
     let at_start = dist(from, polar(c, r, a.start_angle)) <= dist(from, polar(c, r, a.end_angle));
-    let (a0, dir) = if at_start { (a.start_angle, 1.0) } else { (a.end_angle, -1.0) };
+    let (a0, dir) = if at_start {
+        (a.start_angle, 1.0)
+    } else {
+        (a.end_angle, -1.0)
+    };
     let steps = ((sweep / 5.0).ceil() as usize).max(2);
     for k in 1..steps {
         out.push(polar(c, r, a0 + dir * sweep * k as f64 / steps as f64));

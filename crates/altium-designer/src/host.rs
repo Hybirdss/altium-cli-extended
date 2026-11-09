@@ -46,7 +46,11 @@ pub trait Host {
     fn exists(&self, win: &str) -> Result<bool>;
     fn mkdirs(&self, win: &str) -> Result<()>;
     /// Write `files`, then [`Host::launch_x2`]; SSH does both writes in one round trip.
-    fn write_and_launch(&self, files: &[(String, Vec<u8>)], args: &[String]) -> Result<Option<u32>> {
+    fn write_and_launch(
+        &self,
+        files: &[(String, Vec<u8>)],
+        args: &[String],
+    ) -> Result<Option<u32>> {
         self.write_many(files)?;
         self.launch_x2(args)
     }
@@ -78,12 +82,23 @@ pub trait Host {
     fn stage_in(&self, set: &crate::ops::StageSet, file: &Path) -> Result<Staged>;
     /// Resolve an already staged tree without uploading local files or changing its baseline.
     fn staged_location(&self, root: &Path, file: &Path) -> Result<Staged> {
-        self.stage_in(&crate::ops::StageSet { root: root.to_path_buf(), files: vec![] }, file)
+        self.stage_in(
+            &crate::ops::StageSet {
+                root: root.to_path_buf(),
+                files: vec![],
+            },
+            file,
+        )
     }
     /// Bring back files Altium created or changed under the staged root since the operation
     /// started (`since` is the value [`Host::clock`] returned before it). Returns local paths.
     /// Also returns the Altium-side "now" (the next `since`), read in the same round trip.
-    fn stage_out(&self, staged: &Staged, since: &str, opts: altium_format::fsx::WriteOpts) -> Result<(Vec<PathBuf>, String)>;
+    fn stage_out(
+        &self,
+        staged: &Staged,
+        since: &str,
+        opts: altium_format::fsx::WriteOpts,
+    ) -> Result<(Vec<PathBuf>, String)>;
     /// Opaque "now" on the Altium side, compared by [`Host::stage_out`].
     fn clock(&self) -> Result<String>;
 
@@ -91,8 +106,11 @@ pub trait Host {
     /// windows). The script writes its result to the path in `$out`; that file is returned.
     fn ps_interactive(&self, script: &str, timeout: std::time::Duration) -> Result<Vec<u8>> {
         let _ = (script, timeout);
-        Err(altium_core::Error::new(altium_core::ErrorCode::Usage, format!("not supported for the {} host", self.kind()))
-            .hint("Altium's windows are on this desktop; look at them directly"))
+        Err(altium_core::Error::new(
+            altium_core::ErrorCode::Usage,
+            format!("not supported for the {} host", self.kind()),
+        )
+        .hint("Altium's windows are on this desktop; look at them directly"))
     }
 
     /// PNG of the desktop Altium runs on (to see a dialog it is waiting on).
@@ -115,7 +133,9 @@ $g.Dispose(); $bmp.Dispose()";
 /// renamed to `out` when the body finishes, so a reader never sees a partial file.
 pub fn ps_with_out(script: &str, out: &str) -> String {
     let q = out.replace('\'', "''");
-    format!("$ErrorActionPreference = 'Stop'\r\n$out = '{q}.tmp'\r\n{script}\r\nMove-Item -LiteralPath $out -Destination '{q}' -Force\r\n")
+    format!(
+        "$ErrorActionPreference = 'Stop'\r\n$out = '{q}.tmp'\r\n{script}\r\nMove-Item -LiteralPath $out -Destination '{q}' -Force\r\n"
+    )
 }
 
 /// Stable identity of a host (for local caches): kind plus its description.

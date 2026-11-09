@@ -66,13 +66,19 @@ pub struct LoadOptions {
 
 impl Default for LoadOptions {
     fn default() -> Self {
-        LoadOptions { parts: part::ALL, keep_raw: false }
+        LoadOptions {
+            parts: part::ALL,
+            keep_raw: false,
+        }
     }
 }
 
 impl LoadOptions {
     pub fn parts(parts: u32) -> LoadOptions {
-        LoadOptions { parts, keep_raw: false }
+        LoadOptions {
+            parts,
+            keep_raw: false,
+        }
     }
     pub fn raw(mut self, keep: bool) -> LoadOptions {
         self.keep_raw = keep;
@@ -145,7 +151,6 @@ pub fn inflate(data: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-
 /// Decode `FileHeaderSix` / PcbLib `FileHeader`: u32 length + pascal header text, f64 format
 /// version, u32 length + pascal unique id (each u32 repeats the pascal length byte). The older
 /// PcbDoc `FileHeader` holds a u32 length and a (truncated) UTF-16 string.
@@ -160,7 +165,13 @@ pub fn file_header(buf: &[u8]) -> FileInfo {
             fi.unique_id = b.pascal().ok().filter(|u| !u.is_empty());
         }
     } else {
-        let units: Vec<u16> = buf[4..].as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).take(n as usize).collect();
+        let units: Vec<u16> = buf[4..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
+            .take(n as usize)
+            .collect();
         fi.header = String::from_utf16_lossy(&units);
     }
     fi
@@ -173,8 +184,11 @@ fn header_count(cf: &mut Compound, dir: &str) -> Option<u32> {
 
 pub fn load_with(path: &Path, opt: &LoadOptions) -> Result<PcbDoc> {
     if DocKind::of(path) != DocKind::Pcb {
-        return Err(Error::new(ErrorCode::WrongFileType, format!("{} is not a .PcbDoc", path.display()))
-            .hint("use `ace pcblib ...` for .PcbLib footprint libraries"));
+        return Err(Error::new(
+            ErrorCode::WrongFileType,
+            format!("{} is not a .PcbDoc", path.display()),
+        )
+        .hint("use `ace pcblib ...` for .PcbLib footprint libraries"));
     }
     load_compound(path, Compound::open(path)?, opt)
 }
@@ -190,8 +204,10 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
     let want = |p: u32| opt.parts & p != 0;
 
     let Some(board_buf) = cf.read_opt("Board6/Data") else {
-        return Err(Error::parse(format!("{} has no Board6/Data stream", path.display()))
-            .hint("save the board as a binary PcbDoc (PCB 6.0) in Altium"));
+        return Err(
+            Error::parse(format!("{} has no Board6/Data stream", path.display()))
+                .hint("save the board as a binary PcbDoc (PCB 6.0) in Altium"),
+        );
     };
     let (recs, left) = records::prop_records(&board_buf, 0);
     if left > 0 {
@@ -206,15 +222,19 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
         .map(|b| file_header(&b))
         .unwrap_or_default();
     if let Some(v) = cf.read_opt("FileVersionInfo/Data")
-        && let Some((_, p)) = records::prop_records(&v, 0).0.into_iter().next() {
-            file.release_history = records::file_versions(&p);
-            file.saved_with = file.release_history.last().cloned();
-        }
+        && let Some((_, p)) = records::prop_records(&v, 0).0.into_iter().next()
+    {
+        file.release_history = records::file_versions(&p);
+        file.saved_with = file.release_history.last().cloned();
+    }
 
     // Header counts of every storage.
     let mut counts = IndexMap::new();
-    let mut dirs: Vec<String> =
-        cf.streams().into_iter().filter_map(|s| s.path.strip_suffix("/Header").map(str::to_owned)).collect();
+    let mut dirs: Vec<String> = cf
+        .streams()
+        .into_iter()
+        .filter_map(|s| s.path.strip_suffix("/Header").map(str::to_owned))
+        .collect();
     dirs.sort();
     for d in dirs {
         if let Some(n) = header_count(&mut cf, &d) {
@@ -222,8 +242,14 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
         }
     }
 
-    let props_stream = |cf: &mut Compound, name: &str, prefix: usize, warnings: &mut Vec<String>| -> Vec<(u16, Props)> {
-        let Some(buf) = cf.read_opt(&format!("{name}/Data")) else { return vec![] };
+    let props_stream = |cf: &mut Compound,
+                        name: &str,
+                        prefix: usize,
+                        warnings: &mut Vec<String>|
+     -> Vec<(u16, Props)> {
+        let Some(buf) = cf.read_opt(&format!("{name}/Data")) else {
+            return vec![];
+        };
         let (recs, left) = records::prop_records(&buf, prefix);
         if left > 0 {
             warnings.push(format!("{name}: {left} trailing bytes not decoded"));
@@ -242,13 +268,24 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
         .map(|(i, (_, p))| records::component(i, p, raw))
         .collect();
 
-    let wide = cf.read_opt("WideStrings6/Data").map(|b| altium_format::cfbx::wide_string_table(&b, &mut warnings)).unwrap_or_default();
+    let wide = cf
+        .read_opt("WideStrings6/Data")
+        .map(|b| altium_format::cfbx::wide_string_table(&b, &mut warnings))
+        .unwrap_or_default();
     let mut texts = cf
         .read_opt("Texts6/Data")
-        .map(|b| prim::parse_stream(&b, "Texts6", prim::rec::TEXT, &mut warnings, |b, i| prim::parse_text(b, i, &wide)))
+        .map(|b| {
+            prim::parse_stream(&b, "Texts6", prim::rec::TEXT, &mut warnings, |b, i| {
+                prim::parse_text(b, i, &wide)
+            })
+        })
         .unwrap_or_default();
 
-    let bin = |cf: &mut Compound, dir: &str, ty: u8, warnings: &mut Vec<String>, f: &mut dyn FnMut(&mut Bin, usize) -> Result<()>| {
+    let bin = |cf: &mut Compound,
+               dir: &str,
+               ty: u8,
+               warnings: &mut Vec<String>,
+               f: &mut dyn FnMut(&mut Bin, usize) -> Result<()>| {
         if let Some(b) = cf.read_opt(&format!("{dir}/Data")) {
             prim::parse_stream(&b, dir, ty, warnings, |b, i| f(b, i));
         }
@@ -256,38 +293,68 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
 
     let mut pads = vec![];
     if want(part::PADS) {
-        bin(&mut cf, "Pads6", prim::rec::PAD, &mut warnings, &mut |b, i| {
-            pads.push(prim::parse_pad(b, i)?);
-            Ok(())
-        });
+        bin(
+            &mut cf,
+            "Pads6",
+            prim::rec::PAD,
+            &mut warnings,
+            &mut |b, i| {
+                pads.push(prim::parse_pad(b, i)?);
+                Ok(())
+            },
+        );
     }
     let mut vias = vec![];
     if want(part::VIAS) {
-        bin(&mut cf, "Vias6", prim::rec::VIA, &mut warnings, &mut |b, i| {
-            vias.push(prim::parse_via(b, i)?);
-            Ok(())
-        });
+        bin(
+            &mut cf,
+            "Vias6",
+            prim::rec::VIA,
+            &mut warnings,
+            &mut |b, i| {
+                vias.push(prim::parse_via(b, i)?);
+                Ok(())
+            },
+        );
     }
     let mut tracks = vec![];
     if want(part::TRACKS) {
-        bin(&mut cf, "Tracks6", prim::rec::TRACK, &mut warnings, &mut |b, i| {
-            tracks.push(prim::parse_track(b, i)?);
-            Ok(())
-        });
+        bin(
+            &mut cf,
+            "Tracks6",
+            prim::rec::TRACK,
+            &mut warnings,
+            &mut |b, i| {
+                tracks.push(prim::parse_track(b, i)?);
+                Ok(())
+            },
+        );
     }
     let mut arcs = vec![];
     if want(part::ARCS) {
-        bin(&mut cf, "Arcs6", prim::rec::ARC, &mut warnings, &mut |b, i| {
-            arcs.push(prim::parse_arc(b, i)?);
-            Ok(())
-        });
+        bin(
+            &mut cf,
+            "Arcs6",
+            prim::rec::ARC,
+            &mut warnings,
+            &mut |b, i| {
+                arcs.push(prim::parse_arc(b, i)?);
+                Ok(())
+            },
+        );
     }
     let mut fills = vec![];
     if want(part::FILLS) {
-        bin(&mut cf, "Fills6", prim::rec::FILL, &mut warnings, &mut |b, i| {
-            fills.push(prim::parse_fill(b, i)?);
-            Ok(())
-        });
+        bin(
+            &mut cf,
+            "Fills6",
+            prim::rec::FILL,
+            &mut warnings,
+            &mut |b, i| {
+                fills.push(prim::parse_fill(b, i)?);
+                Ok(())
+            },
+        );
     }
     // Regions6 holds every region flattened to straight edges; ShapeBasedRegions6 holds the
     // same regions (same order, layer, net, polygon, kind: checked on every sample) with arc
@@ -303,10 +370,16 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
             ("BoardRegions", "board_regions", false),
         ] {
             let mut v = vec![];
-            bin(&mut cf, dir, prim::rec::REGION, &mut warnings, &mut |b, i| {
-                v.push(prim::parse_region(b, i, src, ext, raw)?);
-                Ok(())
-            });
+            bin(
+                &mut cf,
+                dir,
+                prim::rec::REGION,
+                &mut warnings,
+                &mut |b, i| {
+                    v.push(prim::parse_region(b, i, src, ext, raw)?);
+                    Ok(())
+                },
+            );
             parsed.push(v);
         }
         let board_regions = parsed.pop().unwrap_or_default();
@@ -323,10 +396,16 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
     }
     let mut bodies = vec![];
     if want(part::BODIES) {
-        bin(&mut cf, "ComponentBodies6", prim::rec::BODY, &mut warnings, &mut |b, i| {
-            bodies.push(prim::parse_body(b, i, raw)?);
-            Ok(())
-        });
+        bin(
+            &mut cf,
+            "ComponentBodies6",
+            prim::rec::BODY,
+            &mut warnings,
+            &mut |b, i| {
+                bodies.push(prim::parse_body(b, i, raw)?);
+                Ok(())
+            },
+        );
     }
 
     let polygons: Vec<Polygon> = if want(part::POLYGONS) {
@@ -395,7 +474,10 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
             m.stream = Some(s);
             m.compressed_size = Some(*sz);
         } else if m.embedded {
-            warnings.push(format!("model {} ({}) is marked embedded but stream {s} is missing", m.index, m.name));
+            warnings.push(format!(
+                "model {} ({}) is marked embedded but stream {s} is missing",
+                m.index, m.name
+            ));
         }
     }
     let diff_pairs: Vec<Generic> = if want(part::DIFFPAIRS) {
@@ -409,15 +491,24 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
     };
 
     // Component parameters and the designator/comment texts they own.
-    let params = records::primitive_parameters(&props_stream(&mut cf, "PrimitiveParameters", 0, &mut warnings));
+    let params = records::primitive_parameters(&props_stream(
+        &mut cf,
+        "PrimitiveParameters",
+        0,
+        &mut warnings,
+    ));
     for c in components.iter_mut() {
         if let Some(p) = params.get(&c.unique_id) {
             c.parameters = p.clone();
         }
     }
     for t in &texts {
-        let Some(ci) = t.owner.component_index else { continue };
-        let Some(c) = components.get_mut(ci as usize) else { continue };
+        let Some(ci) = t.owner.component_index else {
+            continue;
+        };
+        let Some(c) = components.get_mut(ci as usize) else {
+            continue;
+        };
         if t.is_designator && !t.text.is_empty() {
             c.designator = t.text.clone();
         } else if t.is_comment && c.comment.is_empty() {
@@ -431,7 +522,12 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
     }
 
     let uids = if want(part::UNIQUE_IDS) {
-        records::unique_ids(&props_stream(&mut cf, "UniqueIDPrimitiveInformation", 0, &mut warnings))
+        records::unique_ids(&props_stream(
+            &mut cf,
+            "UniqueIDPrimitiveInformation",
+            0,
+            &mut warnings,
+        ))
     } else {
         HashMap::new()
     };
@@ -466,7 +562,11 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
 
     // Resolve owners.
     let net_names: Vec<String> = doc.nets.iter().map(|n| n.name.clone()).collect();
-    let designators: Vec<String> = doc.components.iter().map(|c| c.designator.clone()).collect();
+    let designators: Vec<String> = doc
+        .components
+        .iter()
+        .map(|c| c.designator.clone())
+        .collect();
     let mut bad_refs = 0usize;
     let mut fix = |o: &mut Owner, kind: &str, index: usize| {
         if let Some(n) = o.net_index {
@@ -514,13 +614,19 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
         if let Some(n) = pg.net_index {
             pg.net = net_names.get(n as usize).cloned();
         }
-        pg.poured_regions = doc.regions.iter().filter(|r| r.polygon == Some(pg.index as u16)).count();
+        pg.poured_regions = doc
+            .regions
+            .iter()
+            .filter(|r| r.polygon == Some(pg.index as u16))
+            .count();
     }
     for m in &mut doc.models {
         m.used_by = doc.bodies.iter().filter(|b| b.model_id == m.id).count();
     }
     if bad_refs > 0 {
-        doc.warnings.push(format!("{bad_refs} primitive net/component references point past Nets6/Components6"));
+        doc.warnings.push(format!(
+            "{bad_refs} primitive net/component references point past Nets6/Components6"
+        ));
     }
 
     // Cross-check decoded counts against the Header streams.
@@ -540,17 +646,30 @@ fn load_compound(path: &Path, mut cf: Compound, opt: &LoadOptions) -> Result<Pcb
             continue;
         }
         if let Some(&h) = doc.counts.get(dir)
-            && h as usize != n {
-                doc.warnings.push(format!("{dir}: Header says {h} records, decoded {n}"));
-            }
+            && h as usize != n
+        {
+            doc.warnings
+                .push(format!("{dir}: Header says {h} records, decoded {n}"));
+        }
     }
     if want(part::REGIONS) {
-        for (dir, src) in [("Regions6", "regions"), ("ShapeBasedRegions6", "shape_based_regions"), ("BoardRegions", "board_regions")] {
-            let n = doc.regions.iter().chain(&doc.regions_flat).filter(|r| r.source == src).count();
+        for (dir, src) in [
+            ("Regions6", "regions"),
+            ("ShapeBasedRegions6", "shape_based_regions"),
+            ("BoardRegions", "board_regions"),
+        ] {
+            let n = doc
+                .regions
+                .iter()
+                .chain(&doc.regions_flat)
+                .filter(|r| r.source == src)
+                .count();
             if let Some(&h) = doc.counts.get(dir)
-                && h as usize != n {
-                    doc.warnings.push(format!("{dir}: Header says {h} records, decoded {n}"));
-                }
+                && h as usize != n
+            {
+                doc.warnings
+                    .push(format!("{dir}: Header says {h} records, decoded {n}"));
+            }
         }
     }
     Ok(doc)
@@ -564,7 +683,11 @@ pub fn load_design(path: &Path) -> Result<model::Design> {
 
 /// One `Part` per component and one `Net` per net that has pads (pins are pad numbers).
 pub fn design(doc: &PcbDoc) -> model::Design {
-    let file = doc.path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+    let file = doc
+        .path
+        .file_name()
+        .map(|f| f.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let parts = doc
         .components
         .iter()
@@ -590,15 +713,24 @@ pub fn design(doc: &PcbDoc) -> model::Design {
                 ("locked", c.locked.to_string()),
                 ("designator_visible", c.designator_visible.to_string()),
                 ("comment_visible", c.comment_visible.to_string()),
-                ("height", c.height.map(|h| h.out().to_string()).unwrap_or_default()),
+                (
+                    "height",
+                    c.height.map(|h| h.out().to_string()).unwrap_or_default(),
+                ),
                 ("footprint_description", c.footprint_description.clone()),
             ]),
         })
         .collect();
     let mut by_net: IndexMap<u16, BTreeSet<model::Node>> = IndexMap::new();
     for p in &doc.pads {
-        let (Some(n), Some(d)) = (p.owner.net_index, &p.owner.component) else { continue };
-        by_net.entry(n).or_default().insert(model::Node { designator: d.clone(), pin: p.number.clone(), pin_name: String::new() });
+        let (Some(n), Some(d)) = (p.owner.net_index, &p.owner.component) else {
+            continue;
+        };
+        by_net.entry(n).or_default().insert(model::Node {
+            designator: d.clone(),
+            pin: p.number.clone(),
+            pin_name: String::new(),
+        });
     }
     let nets = doc
         .nets
@@ -606,7 +738,10 @@ pub fn design(doc: &PcbDoc) -> model::Design {
         .enumerate()
         .map(|(i, n)| model::Net {
             name: n.name.clone(),
-            nodes: by_net.get(&(i as u16)).map(|s| s.iter().cloned().collect()).unwrap_or_default(),
+            nodes: by_net
+                .get(&(i as u16))
+                .map(|s| s.iter().cloned().collect())
+                .unwrap_or_default(),
             auto_named: false,
             name_source: "pcb".into(),
         })
@@ -615,7 +750,12 @@ pub fn design(doc: &PcbDoc) -> model::Design {
     if doc.loaded & part::PADS == 0 {
         warnings.push("pads were not loaded: nets have no nodes".into());
     }
-    model::Design { source: "pcb".into(), parts, nets, warnings }
+    model::Design {
+        source: "pcb".into(),
+        parts,
+        nets,
+        warnings,
+    }
 }
 
 impl PcbDoc {
@@ -626,7 +766,10 @@ impl PcbDoc {
 
     /// Decompressed STEP data of model `index`.
     pub fn model_data(&mut self, index: usize) -> Result<Vec<u8>> {
-        let m = self.models.get(index).ok_or_else(|| Error::not_found(format!("no model {index}")))?;
+        let m = self
+            .models
+            .get(index)
+            .ok_or_else(|| Error::not_found(format!("no model {index}")))?;
         let s = m.stream.clone().ok_or_else(|| {
             Error::not_found(format!("model {index} ({}) has no embedded data", m.name))
                 .hint("only models with embedded=true carry STEP data in the PcbDoc")
@@ -639,18 +782,26 @@ impl PcbDoc {
         if let Some(c) = self.components.iter().find(|c| c.designator == sel) {
             return Ok(c);
         }
-        if let Some(c) = self.components.iter().find(|c| c.designator.eq_ignore_ascii_case(sel)) {
+        if let Some(c) = self
+            .components
+            .iter()
+            .find(|c| c.designator.eq_ignore_ascii_case(sel))
+        {
             return Ok(c);
         }
         if let Some(i) = sel.strip_prefix('#').and_then(|s| s.parse::<usize>().ok())
-            && let Some(c) = self.components.get(i) {
-                return Ok(c);
-            }
+            && let Some(c) = self.components.get(i)
+        {
+            return Ok(c);
+        }
         let mut close: Vec<&str> = self
             .components
             .iter()
             .map(|c| c.designator.as_str())
-            .filter(|d| d.to_ascii_lowercase().starts_with(&sel.chars().take(1).collect::<String>().to_ascii_lowercase()))
+            .filter(|d| {
+                d.to_ascii_lowercase()
+                    .starts_with(&sel.chars().take(1).collect::<String>().to_ascii_lowercase())
+            })
             .take(20)
             .collect();
         close.sort();
@@ -664,7 +815,8 @@ impl PcbDoc {
             .find(|n| n.name == name)
             .or_else(|| self.nets.iter().find(|n| n.name.eq_ignore_ascii_case(name)))
             .ok_or_else(|| {
-                Error::not_found(format!("no net {name:?}")).hint("see `ace pcb nets` for the net names")
+                Error::not_found(format!("no net {name:?}"))
+                    .hint("see `ace pcb nets` for the net names")
             })
     }
 

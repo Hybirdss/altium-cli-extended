@@ -43,7 +43,9 @@ pub fn preserve(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Err(e) = file.write_all(bytes).and_then(|()| file.sync_all()) {
         drop(file);
         let _ = std::fs::remove_file(path);
-        return Err(Error::from(e).hint("check free space and permissions; the design was not changed"));
+        return Err(
+            Error::from(e).hint("check free space and permissions; the design was not changed")
+        );
     }
     Ok(())
 }
@@ -77,7 +79,11 @@ pub fn replace(path: &Path, bytes: &[u8], opts: WriteOpts) -> Result<Option<Path
     let mut backup = None;
     if let Some(perms) = original.as_ref().filter(|_| !opts.no_backup) {
         let b = suffixed(path, ".bak");
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(&b) {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&b)
+        {
             Ok(mut dest) => {
                 let copied = (|| -> std::io::Result<()> {
                     dest.set_permissions(perms.clone())?;
@@ -88,18 +94,25 @@ pub fn replace(path: &Path, bytes: &[u8], opts: WriteOpts) -> Result<Option<Path
                 if let Err(e) = copied {
                     drop(dest);
                     let _ = std::fs::remove_file(&b);
-                    return Err(Error::from(e).hint("check free space and permissions; the design was not changed"));
+                    return Err(Error::from(e)
+                        .hint("check free space and permissions; the design was not changed"));
                 }
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(Error::from(e).hint("check backup directory permissions; the design was not changed")),
+            Err(e) => {
+                return Err(Error::from(e)
+                    .hint("check backup directory permissions; the design was not changed"));
+            }
         }
         backup = Some(b);
     }
     let tmp = suffixed(path, ".altium-cli-extended.tmp");
     let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp)
         .map_err(|e| Error::from(e).hint("check permissions and remove a stale .altium-cli-extended.tmp file after checking no writer is active"))?;
-    let mut temp = TempFile { path: tmp, renamed: false };
+    let mut temp = TempFile {
+        path: tmp,
+        renamed: false,
+    };
     if let Some(perms) = original {
         file.set_permissions(perms)?;
     }
@@ -130,14 +143,43 @@ mod tests {
         let dir = dir("backup");
         let p = dir.join("board.PcbDoc");
         std::fs::write(&p, b"original").unwrap();
-        let b = replace(&p, b"first", WriteOpts::default()).unwrap().unwrap();
-        assert_eq!(replace(&p, b"second", WriteOpts::default()).unwrap(), Some(b.clone()));
+        let b = replace(&p, b"first", WriteOpts::default())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            replace(&p, b"second", WriteOpts::default()).unwrap(),
+            Some(b.clone())
+        );
         assert_eq!(std::fs::read(&b).unwrap(), b"original");
-        replace(&p, b"dry", WriteOpts { dry_run: true, no_backup: false }).unwrap();
+        replace(
+            &p,
+            b"dry",
+            WriteOpts {
+                dry_run: true,
+                no_backup: false,
+            },
+        )
+        .unwrap();
         assert_eq!(std::fs::read(&p).unwrap(), b"second");
         let fresh = dir.join("fresh");
-        replace(&fresh, b"one", WriteOpts { no_backup: true, dry_run: false }).unwrap();
-        replace(&fresh, b"two", WriteOpts { no_backup: true, dry_run: false }).unwrap();
+        replace(
+            &fresh,
+            b"one",
+            WriteOpts {
+                no_backup: true,
+                dry_run: false,
+            },
+        )
+        .unwrap();
+        replace(
+            &fresh,
+            b"two",
+            WriteOpts {
+                no_backup: true,
+                dry_run: false,
+            },
+        )
+        .unwrap();
         assert!(!dir.join("fresh.bak").exists());
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -147,7 +189,15 @@ mod tests {
         let dir = dir("failure");
         let p = dir.join("destination");
         std::fs::create_dir(&p).unwrap();
-        let e = replace(&p, b"new", WriteOpts { no_backup: true, dry_run: false }).unwrap_err();
+        let e = replace(
+            &p,
+            b"new",
+            WriteOpts {
+                no_backup: true,
+                dry_run: false,
+            },
+        )
+        .unwrap_err();
         assert_eq!(e.code, altium_core::ErrorCode::Unsafe);
         assert!(e.hint.unwrap().contains("Altium Designer"));
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
@@ -210,10 +260,20 @@ mod tests {
         let link = dir.join("link.SchDoc");
         std::fs::write(&real, b"original").unwrap();
         std::os::unix::fs::symlink("real.SchDoc", &link).unwrap();
-        let b = replace(&link, b"new", WriteOpts::default()).unwrap().unwrap();
-        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        let b = replace(&link, b"new", WriteOpts::default())
+            .unwrap()
+            .unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
         assert_eq!(std::fs::read(&real).unwrap(), b"new");
-        assert_eq!(b, std::fs::canonicalize(&dir).unwrap().join("real.SchDoc.bak"));
+        assert_eq!(
+            b,
+            std::fs::canonicalize(&dir).unwrap().join("real.SchDoc.bak")
+        );
         assert_eq!(std::fs::read(&b).unwrap(), b"original");
         std::fs::remove_dir_all(dir).unwrap();
     }

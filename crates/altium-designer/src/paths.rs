@@ -51,7 +51,9 @@ pub fn absolute(p: &Path) -> PathBuf {
 /// does not exist yet. altium-doc resolves a project and its documents the same way, so paths
 /// from both sides compare equal on every OS (`/var` vs `/private/var` on macOS).
 pub fn resolve(p: &Path) -> PathBuf {
-    std::fs::canonicalize(p).map(plain).unwrap_or_else(|_| absolute(p))
+    std::fs::canonicalize(p)
+        .map(plain)
+        .unwrap_or_else(|_| absolute(p))
 }
 
 /// Drop the `\\?\` prefix Windows canonicalization adds, so paths stay in the `C:\...` form Altium
@@ -82,12 +84,24 @@ mod tests {
     fn roundtrip() {
         let prefix = Path::new("/home/u/bottle");
         assert_eq!(
-            to_windows(prefix, Path::new("/home/u/bottle/drive_c/altium-cli-extended/jobs/1")),
+            to_windows(
+                prefix,
+                Path::new("/home/u/bottle/drive_c/altium-cli-extended/jobs/1")
+            ),
             "C:\\altium-cli-extended\\jobs\\1"
         );
-        assert_eq!(to_windows(prefix, Path::new("/home/u/designs/A.PrjPcb")), "Z:\\home\\u\\designs\\A.PrjPcb");
-        assert_eq!(to_unix(prefix, "Z:\\home\\u\\x.PcbDoc"), Some(PathBuf::from("/home/u/x.PcbDoc")));
-        assert_eq!(to_unix(prefix, "c:\\Program Files\\Altium"), Some(PathBuf::from("/home/u/bottle/drive_c/Program Files/Altium")));
+        assert_eq!(
+            to_windows(prefix, Path::new("/home/u/designs/A.PrjPcb")),
+            "Z:\\home\\u\\designs\\A.PrjPcb"
+        );
+        assert_eq!(
+            to_unix(prefix, "Z:\\home\\u\\x.PcbDoc"),
+            Some(PathBuf::from("/home/u/x.PcbDoc"))
+        );
+        assert_eq!(
+            to_unix(prefix, "c:\\Program Files\\Altium"),
+            Some(PathBuf::from("/home/u/bottle/drive_c/Program Files/Altium"))
+        );
         assert_eq!(to_unix(prefix, "D:\\x"), None);
     }
 }

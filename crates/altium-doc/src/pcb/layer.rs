@@ -113,7 +113,11 @@ impl Layer {
 
     /// From a 32-bit id. Small values (< 256) are legacy ids as stored by older `LAYERID` keys.
     pub fn from_id(id: u32) -> Layer {
-        if id < 256 { Layer::from_v6(id as u8) } else { Layer(id) }
+        if id < 256 {
+            Layer::from_v6(id as u8)
+        } else {
+            Layer(id)
+        }
     }
 
     /// Pick the layer of a binary record that carries both a V6 byte and a V7 word: the V7 id
@@ -131,7 +135,10 @@ impl Layer {
     /// `PLANE2`, `MECHANICAL17`, `KEEPOUT`, `MULTILAYER`...) or a display name (`TopLayer`,
     /// `MidLayer1`, `Mechanical1`, `KeepOutLayer`), case-insensitively.
     pub fn from_name(name: &str) -> Option<Layer> {
-        let n: String = name.chars().filter(|c| !c.is_whitespace() && *c != '-' && *c != '_').collect();
+        let n: String = name
+            .chars()
+            .filter(|c| !c.is_whitespace() && *c != '-' && *c != '_')
+            .collect();
         let n = n.to_ascii_uppercase();
         if n.is_empty() {
             return None;
@@ -145,7 +152,11 @@ impl Layer {
             "NOLAYER" => Layer::NONE,
             _ => {
                 if let Some(k) = num("MIDLAYER").or_else(|| num("MID")) {
-                    if (1..=30).contains(&k) { Layer::mid(k) } else { return None }
+                    if (1..=30).contains(&k) {
+                        Layer::mid(k)
+                    } else {
+                        return None;
+                    }
                 } else if let Some(k) = num("INTERNALPLANE").or_else(|| num("PLANE")) {
                     Layer::plane(k)
                 } else if let Some(k) = num("MECHANICAL").or_else(|| num("MECH")) {
@@ -196,7 +207,11 @@ impl Layer {
             PLANE => LayerKind::Plane,
             MECH => LayerKind::Mechanical,
             DIEL => LayerKind::Dielectric,
-            OTHER => OTHERS.iter().find(|o| o.0 == v & 0xFFFF).map(|o| o.3).unwrap_or(LayerKind::Unknown),
+            OTHER => OTHERS
+                .iter()
+                .find(|o| o.0 == v & 0xFFFF)
+                .map(|o| o.3)
+                .unwrap_or(LayerKind::Unknown),
             _ => LayerKind::Unknown,
         }
     }
@@ -217,7 +232,10 @@ impl Layer {
             },
             PLANE if (1..=16).contains(&(v & 0xFFFF)) => Some((v & 0xFFFF) as u8 + 38),
             MECH if (1..=16).contains(&(v & 0xFFFF)) => Some((v & 0xFFFF) as u8 + 56),
-            OTHER => OTHERS.iter().find(|o| o.0 == v & 0xFFFF && o.1 != 0).map(|o| o.1),
+            OTHER => OTHERS
+                .iter()
+                .find(|o| o.0 == v & 0xFFFF && o.1 != 0)
+                .map(|o| o.1),
             _ => None,
         }
     }
@@ -226,7 +244,14 @@ impl Layer {
     pub fn order(self) -> (u8, u32) {
         let v = self.0;
         match v & 0xFFFF_0000 {
-            COPPER => (0, if v & 0xFFFF == 0xFFFF { 0xFFFF } else { v & 0xFFFF }),
+            COPPER => (
+                0,
+                if v & 0xFFFF == 0xFFFF {
+                    0xFFFF
+                } else {
+                    v & 0xFFFF
+                },
+            ),
             PLANE => (1, v & 0xFFFF),
             OTHER => (2, v & 0xFFFF),
             MECH => (3, v & 0xFFFF),
@@ -238,7 +263,9 @@ impl Layer {
     pub fn side(self) -> Option<&'static str> {
         match self {
             Layer::TOP | Layer::TOP_OVERLAY | Layer::TOP_PASTE | Layer::TOP_SOLDER => Some("top"),
-            Layer::BOTTOM | Layer::BOTTOM_OVERLAY | Layer::BOTTOM_PASTE | Layer::BOTTOM_SOLDER => Some("bottom"),
+            Layer::BOTTOM | Layer::BOTTOM_OVERLAY | Layer::BOTTOM_PASTE | Layer::BOTTOM_SOLDER => {
+                Some("bottom")
+            }
             _ => None,
         }
     }
@@ -281,12 +308,18 @@ mod tests {
     fn names() {
         assert_eq!(Layer::from_name("TOP"), Some(Layer::TOP));
         assert_eq!(Layer::from_name("MID12"), Some(Layer::mid(12)));
-        assert_eq!(Layer::from_name("MECHANICAL17").unwrap().name(), "Mechanical17");
+        assert_eq!(
+            Layer::from_name("MECHANICAL17").unwrap().name(),
+            "Mechanical17"
+        );
         assert_eq!(Layer::from_name("TOPOVERLAY"), Some(Layer::TOP_OVERLAY));
         assert_eq!(Layer::from_name("MultiLayer"), Some(Layer::MULTI));
         assert_eq!(Layer::from_name("KeepOutLayer"), Some(Layer::KEEPOUT));
         assert_eq!(Layer::from_name("Top Layer"), Some(Layer::TOP));
-        assert_eq!(Layer::from_name("DRILLDRAWING").unwrap().name(), "DrillDrawing");
+        assert_eq!(
+            Layer::from_name("DRILLDRAWING").unwrap().name(),
+            "DrillDrawing"
+        );
         assert_eq!(Layer::from_name("PLANE3").unwrap().name(), "InternalPlane3");
         assert_eq!(Layer::from_name("bogus"), None);
     }

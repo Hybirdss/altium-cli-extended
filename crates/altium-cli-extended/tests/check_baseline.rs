@@ -15,7 +15,13 @@ fn baseline_gates_new_findings_and_rejects_partial_reports() {
     assert_eq!(d["gate"]["matched"], 0);
     ok(&["sch", "set-designator", &f, "U?", "U1"]);
     let d = ok(&["check", &f, "--baseline", &baseline, "--fail-on", "error"]);
-    assert!(d["resolved"].as_array().unwrap().iter().any(|r| r["code"] == "unannotated"));
+    assert!(
+        d["resolved"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["code"] == "unannotated")
+    );
     ok(&["sch", "set-designator", &f, "P8", "P?"]);
     let (exit, d) = run(&["check", &f, "--baseline", &baseline, "--fail-on", "error"]);
     assert_eq!(exit, 9);

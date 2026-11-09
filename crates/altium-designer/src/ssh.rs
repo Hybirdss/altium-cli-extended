@@ -14,8 +14,8 @@
 //! under it. [`SshHost::stage_out`] brings back what Altium wrote.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
@@ -28,7 +28,14 @@ use crate::config::{Config, home};
 use crate::host::{Host, ROOT, Staged, fnv, ps_with_out, x2_path};
 
 /// Directories never synced to the remote machine.
-const SKIP_DIRS: &[&str] = &[".git", "History", "__Previews", ".fixtures", "target", "node_modules"];
+const SKIP_DIRS: &[&str] = &[
+    ".git",
+    "History",
+    "__Previews",
+    ".fixtures",
+    "target",
+    "node_modules",
+];
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SshConfig {
@@ -44,7 +51,10 @@ impl SshConfig {
         Some(SshConfig {
             host: cfg.ssh_host.clone()?,
             port: cfg.ssh_port.unwrap_or(22),
-            user: cfg.ssh_user.clone().unwrap_or_else(|| std::env::var("USER").unwrap_or_default()),
+            user: cfg
+                .ssh_user
+                .clone()
+                .unwrap_or_else(|| std::env::var("USER").unwrap_or_default()),
             key: cfg.ssh_key.clone(),
         })
     }
@@ -57,7 +67,9 @@ fn b64(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut s = String::with_capacity(data.len().div_ceil(3) * 4);
     for c in data.chunks(3) {
-        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        let n = (c[0] as u32) << 16
+            | (*c.get(1).unwrap_or(&0) as u32) << 8
+            | *c.get(2).unwrap_or(&0) as u32;
         for i in 0..4 {
             if i <= c.len() {
                 s.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
@@ -122,11 +134,18 @@ struct HostCache {
 
 impl SshHost {
     fn cache_path(sc: &SshConfig) -> PathBuf {
-        crate::config::state_dir().join(format!("ssh-{}-{}.json", sc.host.replace([':', '/', '\\'], "_"), sc.port))
+        crate::config::state_dir().join(format!(
+            "ssh-{}-{}.json",
+            sc.host.replace([':', '/', '\\'], "_"),
+            sc.port
+        ))
     }
 
     fn load_cache(sc: &SshConfig) -> HostCache {
-        std::fs::read(Self::cache_path(sc)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        std::fs::read(Self::cache_path(sc))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
     }
 
     fn save_cache(&self, c: &HostCache) {
@@ -142,7 +161,10 @@ impl SshHost {
     pub fn connect(sc: SshConfig) -> Result<SshHost> {
         check_destination(&sc)?;
         let cache = Self::load_cache(&sc);
-        let mut h = SshHost { sc, altium_dir: cache.altium_dir.clone() };
+        let mut h = SshHost {
+            sc,
+            altium_dir: cache.altium_dir.clone(),
+        };
         if !h.altium_dir.is_empty() && h.exists(&x2_path(&h.altium_dir))? {
             return Ok(h);
         }
@@ -152,7 +174,10 @@ impl SshHost {
               if ($d) { $d.FullName }",
         )?;
         h.altium_dir = dir.trim().to_owned();
-        h.save_cache(&HostCache { altium_dir: h.altium_dir.clone(), ..cache });
+        h.save_cache(&HostCache {
+            altium_dir: h.altium_dir.clone(),
+            ..cache
+        });
         Ok(h)
     }
 
@@ -162,8 +187,16 @@ impl SshHost {
 
     /// Is the `altium-cli-extended-run` task there, in its current form?
     pub fn runner_installed(&self) -> bool {
-        self.exec(&["schtasks", "/query", "/tn", "altium-cli-extended-run", "/xml"])
-            .is_ok_and(|o| o.status.success() && runner_xml_current(&String::from_utf8_lossy(&o.stdout)))
+        self.exec(&[
+            "schtasks",
+            "/query",
+            "/tn",
+            "altium-cli-extended-run",
+            "/xml",
+        ])
+        .is_ok_and(|o| {
+            o.status.success() && runner_xml_current(&String::from_utf8_lossy(&o.stdout))
+        })
     }
 
     /// Register (or upgrade) the `altium-cli-extended-run` task for the SSH user's interactive session.
@@ -174,9 +207,7 @@ impl SshHost {
             (format!(r"{ROOT}\run.cmd"), RUNNER_CMD.as_bytes().to_vec()),
             (format!(r"{ROOT}\kick.cmd"), KICK_CMD.as_bytes().to_vec()),
         ])?;
-        self.ps(
-            REGISTER_RUNNER_PS1,
-        )?;
+        self.ps(REGISTER_RUNNER_PS1)?;
         let mut c = Self::load_cache(&self.sc);
         c.runner_version = RUNNER_VERSION;
         self.save_cache(&c);
@@ -188,7 +219,10 @@ impl SshHost {
         if Self::load_cache(&self.sc).runner_version >= RUNNER_VERSION {
             return Ok(());
         }
-        if self.runner_installed() && self.exists(&format!(r"{ROOT}\run"))? && self.read(&format!(r"{ROOT}\kick.cmd"))?.as_deref() == Some(KICK_CMD.as_bytes()) {
+        if self.runner_installed()
+            && self.exists(&format!(r"{ROOT}\run"))?
+            && self.read(&format!(r"{ROOT}\kick.cmd"))?.as_deref() == Some(KICK_CMD.as_bytes())
+        {
             let mut c = Self::load_cache(&self.sc);
             c.runner_version = RUNNER_VERSION;
             self.save_cache(&c);
@@ -211,15 +245,25 @@ impl SshHost {
             crate::security::check_acl(&self.ps(crate::security::READ_ACL)?)?;
         }
         self.ensure_runner()?;
-        let id = format!("{}-{}", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"), std::process::id());
-        Ok((format!(r"{ROOT}\run\{id}.cmd"), format!("@echo off\r\n{cmd_body}\r\n").into_bytes()))
+        let id = format!(
+            "{}-{}",
+            chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"),
+            std::process::id()
+        );
+        Ok((
+            format!(r"{ROOT}\run\{id}.cmd"),
+            format!("@echo off\r\n{cmd_body}\r\n").into_bytes(),
+        ))
     }
 
     /// The runner file that starts X2.EXE with `args`.
     fn launch_payload(&self, args: &[String]) -> Result<(String, Vec<u8>)> {
         if !self.has_altium() {
-            return Err(Error::new(ErrorCode::DesignerUnavailable, "Altium Designer is not installed on the SSH host")
-                .hint("install Altium Designer on that machine (`ace designer setup`)"));
+            return Err(Error::new(
+                ErrorCode::DesignerUnavailable,
+                "Altium Designer is not installed on the SSH host",
+            )
+            .hint("install Altium Designer on that machine (`ace designer setup`)"));
         }
         // Each argument is quoted, so cmd.exe leaves | > ( ) inside it alone.
         let mut line = format!("start \"\" \"{}\"", x2_path(&self.altium_dir));
@@ -248,9 +292,22 @@ impl SshHost {
         if let Some(k) = &self.sc.key {
             c.arg("-i").arg(k);
         }
-        let cm = home().join(".ssh").join(format!("cm-altium-{}-{}", self.sc.host, self.sc.port));
-        c.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=60", "-o", "StrictHostKeyChecking=yes"]);
-        c.arg("-o").arg(path_opt("UserKnownHostsFile", &home().join(".ssh/known_hosts_altium"), ""));
+        let cm = home()
+            .join(".ssh")
+            .join(format!("cm-altium-{}-{}", self.sc.host, self.sc.port));
+        c.args([
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=60",
+            "-o",
+            "StrictHostKeyChecking=yes",
+        ]);
+        c.arg("-o").arg(path_opt(
+            "UserKnownHostsFile",
+            &home().join(".ssh/known_hosts_altium"),
+            "",
+        ));
         if cfg!(unix) {
             c.args(["-o", "ControlMaster=auto", "-o", "ControlPersist=600"]);
             c.arg("-o").arg(path_opt("ControlPath", &cm, "-%r"));
@@ -272,22 +329,38 @@ impl SshHost {
     /// Run a PowerShell script in the Windows machine; returns stdout. Non-zero exit → error.
     pub fn ps(&self, script: &str) -> Result<String> {
         // Real failures throw (ErrorActionPreference=Stop) and exit non-zero; a silenced error must not.
-        let full = format!("$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'\n{script}\nexit 0");
+        let full = format!(
+            "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'\n{script}\nexit 0"
+        );
         let utf16: Vec<u8> = full.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
         let out: Output = self
             .ssh_base()
-            .args(["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", &b64(&utf16)])
+            .args([
+                "powershell",
+                "-NoProfile",
+                "-NonInteractive",
+                "-EncodedCommand",
+                &b64(&utf16),
+            ])
             .stdin(Stdio::null())
             .output()
-            .map_err(|e| Error::new(ErrorCode::DesignerUnavailable, format!("ssh failed to start: {e}")))?;
+            .map_err(|e| {
+                Error::new(
+                    ErrorCode::DesignerUnavailable,
+                    format!("ssh failed to start: {e}"),
+                )
+            })?;
         if out.status.code() == Some(255) {
             return Err(unreachable_error(&out));
         }
         if !out.status.success() {
             let err = String::from_utf8_lossy(&out.stderr);
-            return Err(Error::new(ErrorCode::DesignerFailed, format!("remote command failed: {}", clean_ps_error(&err)))
-                .hint("see error.details")
-                .details(json!({"stderr": err, "stdout": String::from_utf8_lossy(&out.stdout)})));
+            return Err(Error::new(
+                ErrorCode::DesignerFailed,
+                format!("remote command failed: {}", clean_ps_error(&err)),
+            )
+            .hint("see error.details")
+            .details(json!({"stderr": err, "stdout": String::from_utf8_lossy(&out.stdout)})));
         }
         Ok(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n"))
     }
@@ -299,7 +372,12 @@ impl SshHost {
             .args(args)
             .stdin(Stdio::null())
             .output()
-            .map_err(|e| Error::new(ErrorCode::DesignerUnavailable, format!("ssh failed to start: {e}")))?;
+            .map_err(|e| {
+                Error::new(
+                    ErrorCode::DesignerUnavailable,
+                    format!("ssh failed to start: {e}"),
+                )
+            })?;
         if out.status.code() == Some(255) {
             return Err(unreachable_error(&out));
         }
@@ -320,7 +398,12 @@ impl SshHost {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| Error::new(ErrorCode::DesignerUnavailable, format!("sftp failed to start: {e}")))?;
+            .map_err(|e| {
+                Error::new(
+                    ErrorCode::DesignerUnavailable,
+                    format!("sftp failed to start: {e}"),
+                )
+            })?;
         if let Some(mut stdin) = child.stdin.take() {
             stdin.write_all(batch.as_bytes())?;
         }
@@ -335,7 +418,9 @@ impl SshHost {
     /// `-mkdir` lines for every folder from the drive down to `win_dir`.
     fn mkdir_lines(win_dir: &str) -> String {
         let parts: Vec<&str> = win_dir.split('\\').filter(|p| !p.is_empty()).collect();
-        (2..=parts.len()).map(|n| format!("-mkdir \"{}\"\n", sftp_path(&parts[..n].join("\\")))).collect()
+        (2..=parts.len())
+            .map(|n| format!("-mkdir \"{}\"\n", sftp_path(&parts[..n].join("\\"))))
+            .collect()
     }
 
     fn local_tmp() -> Result<TransferDir> {
@@ -369,8 +454,8 @@ impl TransferDir {
             builder.create(path)
         }
         match create(parent) {
-            Ok(()) => {},
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {},
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(e) => return Err(e.into()),
         }
         let md = std::fs::symlink_metadata(parent)?;
@@ -385,7 +470,10 @@ impl TransferDir {
                 .hint("remove symlinks and restrict the SSH transfer directory to its owner (chmod 700 on Unix), then retry"));
         }
         for i in 0..100 {
-            let stamp = std::time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+            let stamp = std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
             let path = parent.join(format!("{}-{stamp}-{i}", std::process::id()));
             match create(&path) {
                 Ok(()) => return Ok(Self(path)),
@@ -393,18 +481,25 @@ impl TransferDir {
                 Err(e) => return Err(e.into()),
             }
         }
-        Err(Error::new(ErrorCode::Io, "cannot allocate a private SSH transfer directory")
-            .hint("check free space and permissions in the per-user state directory"))
+        Err(Error::new(
+            ErrorCode::Io,
+            "cannot allocate a private SSH transfer directory",
+        )
+        .hint("check free space and permissions in the per-user state directory"))
     }
 }
 
 impl std::ops::Deref for TransferDir {
     type Target = Path;
-    fn deref(&self) -> &Path { &self.0 }
+    fn deref(&self) -> &Path {
+        &self.0
+    }
 }
 
 impl Drop for TransferDir {
-    fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); }
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// The task runs `run.cmd` in a hidden console without redirecting its output (see
@@ -412,7 +507,10 @@ impl Drop for TransferDir {
 pub(crate) fn runner_xml_current(xml: &str) -> bool {
     // schtasks can emit UTF-16 even when its stdout is captured as bytes.
     let x = xml.replace('\0', "").to_ascii_lowercase();
-    x.contains("run.cmd") && !x.contains("run.log") && x.contains("--headless") && x.contains("<runlevel>leastprivilege</runlevel>")
+    x.contains("run.cmd")
+        && !x.contains("run.log")
+        && x.contains("--headless")
+        && x.contains("<runlevel>leastprivilege</runlevel>")
 }
 
 /// PID from `tasklist /fo csv /nh` output (`"X2.EXE","7556","Console","1","525,276 K"`).
@@ -432,7 +530,10 @@ fn sftp_path(win: &str) -> String {
 fn check_destination(sc: &SshConfig) -> Result<()> {
     for (key, value) in [("ssh_user", &sc.user), ("ssh_host", &sc.host)] {
         if value.starts_with('-') {
-            return Err(Error::usage(format!("{key} must not start with '-': {value:?}")).hint(format!("`ace designer config --set {key}=<name>`")));
+            return Err(
+                Error::usage(format!("{key} must not start with '-': {value:?}"))
+                    .hint(format!("`ace designer config --set {key}=<name>`")),
+            );
         }
     }
     Ok(())
@@ -442,21 +543,38 @@ fn check_destination(sc: &SshConfig) -> Result<()> {
 /// expands `%` tokens, so the path is quoted and its `%` doubled; `tokens` is appended as is.
 fn path_opt(key: &str, path: &Path, tokens: &str) -> String {
     let value = format!("{}{tokens}", path.to_string_lossy().replace('%', "%%"));
-    format!("{key}=\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    format!(
+        "{key}=\"{}\"",
+        value.replace('\\', "\\\\").replace('"', "\\\"")
+    )
 }
 
 /// The `tar -T` list for `files` (relative to the archive root): NUL-separated so names with
 /// newlines survive, `./`-prefixed so a name starting with `-` is not an option. Read with
 /// `--null`, which GNU tar and bsdtar both take literally (no backslash unquoting).
 fn tar_list(files: &[String]) -> Vec<u8> {
-    files.iter().flat_map(|f| format!("./{f}\0").into_bytes()).collect()
+    files
+        .iter()
+        .flat_map(|f| format!("./{f}\0").into_bytes())
+        .collect()
 }
 
 fn pack(root: &Path, files: &[String], list: &Path, tarf: &Path) -> Result<()> {
     std::fs::write(list, tar_list(files))?;
-    let st = Command::new("tar").arg("-cf").arg(tarf).arg("-C").arg(root).arg("--null").arg("-T").arg(list).status()?;
+    let st = Command::new("tar")
+        .arg("-cf")
+        .arg(tarf)
+        .arg("-C")
+        .arg(root)
+        .arg("--null")
+        .arg("-T")
+        .arg(list)
+        .status()?;
     if !st.success() {
-        return Err(Error::new(ErrorCode::Io, "tar failed while packing the project"));
+        return Err(Error::new(
+            ErrorCode::Io,
+            "tar failed while packing the project",
+        ));
     }
     Ok(())
 }
@@ -465,9 +583,16 @@ fn pack(root: &Path, files: &[String], list: &Path, tarf: &Path) -> Result<()> {
 fn stamps(root: &Path, files: &[PathBuf]) -> BTreeMap<String, (u64, u128)> {
     let mut out = BTreeMap::new();
     for p in files {
-        let (Ok(md), Ok(rel)) = (std::fs::symlink_metadata(p), p.strip_prefix(root)) else { continue };
+        let (Ok(md), Ok(rel)) = (std::fs::symlink_metadata(p), p.strip_prefix(root)) else {
+            continue;
+        };
         if md.is_file() {
-            let mt = md.modified().ok().and_then(|m| m.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+            let mt = md
+                .modified()
+                .ok()
+                .and_then(|m| m.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
             out.insert(rel.to_string_lossy().into_owned(), (md.len(), mt));
         }
     }
@@ -498,25 +623,51 @@ struct Manifest {
 }
 
 fn safe_pull_path(root: &Path, relative: &str) -> Result<PathBuf> {
-    if relative.is_empty() || relative.contains([':', '\\']) || Path::new(relative).components().any(|c| !matches!(c, std::path::Component::Normal(_))) {
-        return Err(Error::new(ErrorCode::Unsafe, format!("unsafe remote output path: {relative}"))
-            .hint("keep output files inside the staged project tree"));
+    if relative.is_empty()
+        || relative.contains([':', '\\'])
+        || Path::new(relative)
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return Err(Error::new(
+            ErrorCode::Unsafe,
+            format!("unsafe remote output path: {relative}"),
+        )
+        .hint("keep output files inside the staged project tree"));
     }
     let mut path = root.to_path_buf();
     for part in Path::new(relative).components() {
         path.push(part);
         if std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
-            return Err(Error::new(ErrorCode::Unsafe, format!("output path is a symlink: {}", path.display()))
-                .hint("pull into a project tree without symlinks"));
+            return Err(Error::new(
+                ErrorCode::Unsafe,
+                format!("output path is a symlink: {}", path.display()),
+            )
+            .hint("pull into a project tree without symlinks"));
         }
     }
     Ok(path)
 }
 
-fn verify_pull_target(path: &Path, relative: &str, baseline: &Manifest, incoming: &[u8]) -> Result<()> {
-    let Ok(md) = std::fs::metadata(path) else { return Ok(()) };
-    if std::fs::read(path).ok().as_deref() == Some(incoming) { return Ok(()) }
-    let stamp = (md.len(), md.modified()?.duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos());
+fn verify_pull_target(
+    path: &Path,
+    relative: &str,
+    baseline: &Manifest,
+    incoming: &[u8],
+) -> Result<()> {
+    let Ok(md) = std::fs::metadata(path) else {
+        return Ok(());
+    };
+    if std::fs::read(path).ok().as_deref() == Some(incoming) {
+        return Ok(());
+    }
+    let stamp = (
+        md.len(),
+        md.modified()?
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+    );
     if baseline.files.get(relative) != Some(&stamp) {
         return Err(Error::new(ErrorCode::Unsafe, format!("local file changed since staging: {}", path.display()))
             .hint("keep your local edit, or move it aside before `ace designer pull`; no local files were overwritten"));
@@ -524,9 +675,14 @@ fn verify_pull_target(path: &Path, relative: &str, baseline: &Manifest, incoming
     Ok(())
 }
 
-fn write_pulled_files(files: Vec<(PathBuf, Vec<u8>)>, opts: altium_format::fsx::WriteOpts) -> Result<()> {
+fn write_pulled_files(
+    files: Vec<(PathBuf, Vec<u8>)>,
+    opts: altium_format::fsx::WriteOpts,
+) -> Result<()> {
     for (path, data) in files {
-        if let Some(parent) = path.parent() && !opts.dry_run {
+        if let Some(parent) = path.parent()
+            && !opts.dry_run
+        {
             std::fs::create_dir_all(parent)?;
         }
         if std::fs::read(&path).ok().as_deref() != Some(data.as_slice()) {
@@ -537,7 +693,9 @@ fn write_pulled_files(files: Vec<(PathBuf, Vec<u8>)>, opts: altium_format::fsx::
 }
 
 fn scan(root: &Path, dir: &Path, out: &mut BTreeMap<String, (u64, u128)>) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.flatten() {
         let p = e.path();
         let Ok(md) = e.metadata() else { continue };
@@ -547,8 +705,17 @@ fn scan(root: &Path, dir: &Path, out: &mut BTreeMap<String, (u64, u128)>) {
                 scan(root, &p, out);
             }
         } else if md.is_file() && !name.to_ascii_lowercase().ends_with(".bak") {
-            let rel = p.strip_prefix(root).unwrap_or(&p).to_string_lossy().into_owned();
-            let mt = md.modified().ok().and_then(|m| m.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+            let rel = p
+                .strip_prefix(root)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .into_owned();
+            let mt = md
+                .modified()
+                .ok()
+                .and_then(|m| m.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
             out.insert(rel, (md.len(), mt));
         }
     }
@@ -577,18 +744,33 @@ impl Host for SshHost {
         let transfer = Self::local_tmp()?;
         let tmp = transfer.join(format!("w-{}-{}", std::process::id(), fnv(win)));
         std::fs::write(&tmp, data)?;
-        let r = self.sftp(&format!("{}put \"{}\" \"{}\"\n", Self::mkdir_lines(parent), tmp.display(), sftp_path(win)));
+        let r = self.sftp(&format!(
+            "{}put \"{}\" \"{}\"\n",
+            Self::mkdir_lines(parent),
+            tmp.display(),
+            sftp_path(win)
+        ));
         let _ = std::fs::remove_file(&tmp);
         match r? {
             Some(_) => Ok(()),
-            None => Err(Error::new(ErrorCode::DesignerFailed, format!("could not write {win} on the SSH host"))),
+            None => Err(Error::new(
+                ErrorCode::DesignerFailed,
+                format!("could not write {win} on the SSH host"),
+            )),
         }
     }
 
     fn read(&self, win: &str) -> Result<Option<Vec<u8>>> {
         let transfer = Self::local_tmp()?;
         let tmp = transfer.join(format!("r-{}-{}", std::process::id(), fnv(win)));
-        if self.sftp(&format!("get \"{}\" \"{}\"\n", sftp_path(win), tmp.display()))?.is_none() {
+        if self
+            .sftp(&format!(
+                "get \"{}\" \"{}\"\n",
+                sftp_path(win),
+                tmp.display()
+            ))?
+            .is_none()
+        {
             return Ok(None);
         }
         let b = std::fs::read(&tmp)?;
@@ -617,17 +799,29 @@ impl Host for SshHost {
         }
         match r? {
             Some(_) => Ok(()),
-            None => Err(Error::new(ErrorCode::DesignerFailed, "could not write files on the SSH host").details(json!({"files": files.iter().map(|f| &f.0).collect::<Vec<_>>()}))),
+            None => Err(Error::new(
+                ErrorCode::DesignerFailed,
+                "could not write files on the SSH host",
+            )
+            .details(json!({"files": files.iter().map(|f| &f.0).collect::<Vec<_>>()}))),
         }
     }
 
     fn read_many(&self, wins: &[String]) -> Result<Vec<Option<Vec<u8>>>> {
         let tmp = Self::local_tmp()?;
-        let locals: Vec<PathBuf> = wins.iter().enumerate().map(|(i, w)| tmp.join(format!("r-{}-{i}-{}", std::process::id(), fnv(w)))).collect();
+        let locals: Vec<PathBuf> = wins
+            .iter()
+            .enumerate()
+            .map(|(i, w)| tmp.join(format!("r-{}-{i}-{}", std::process::id(), fnv(w))))
+            .collect();
         for l in &locals {
             let _ = std::fs::remove_file(l);
         }
-        let batch: String = wins.iter().zip(&locals).map(|(w, l)| format!("-get \"{}\" \"{}\"\n", sftp_path(w), l.display())).collect();
+        let batch: String = wins
+            .iter()
+            .zip(&locals)
+            .map(|(w, l)| format!("-get \"{}\" \"{}\"\n", sftp_path(w), l.display()))
+            .collect();
         self.sftp(&batch)?;
         Ok(locals
             .iter()
@@ -640,7 +834,9 @@ impl Host for SshHost {
     }
 
     fn exists(&self, win: &str) -> Result<bool> {
-        Ok(self.sftp(&format!("ls -1 \"{}\"\n", sftp_path(win)))?.is_some())
+        Ok(self
+            .sftp(&format!("ls -1 \"{}\"\n", sftp_path(win)))?
+            .is_some())
     }
 
     fn remove(&self, win: &str) -> Result<()> {
@@ -649,14 +845,23 @@ impl Host for SshHost {
     }
 
     fn mkdirs(&self, win: &str) -> Result<()> {
-        match self.sftp(&format!("{}ls -1 \"{}\"\n", Self::mkdir_lines(win), sftp_path(win)))? {
+        match self.sftp(&format!(
+            "{}ls -1 \"{}\"\n",
+            Self::mkdir_lines(win),
+            sftp_path(win)
+        ))? {
             Some(_) => Ok(()),
-            None => Err(Error::new(ErrorCode::DesignerFailed, format!("could not create {win} on the SSH host"))),
+            None => Err(Error::new(
+                ErrorCode::DesignerFailed,
+                format!("could not create {win} on the SSH host"),
+            )),
         }
     }
 
     fn list(&self, win_dir: &str) -> Result<Vec<String>> {
-        let Some(out) = self.sftp(&format!("ls -1 \"{}\"\n", sftp_path(win_dir)))? else { return Ok(vec![]) };
+        let Some(out) = self.sftp(&format!("ls -1 \"{}\"\n", sftp_path(win_dir)))? else {
+            return Ok(vec![]);
+        };
         Ok(out
             .lines()
             .filter(|l| !l.starts_with("sftp>"))
@@ -672,7 +877,14 @@ impl Host for SshHost {
     }
 
     fn altium_pid(&self) -> Result<Option<u32>> {
-        let out = self.exec(&["tasklist", "/fi", "\"imagename eq X2.EXE\"", "/fo", "csv", "/nh"])?;
+        let out = self.exec(&[
+            "tasklist",
+            "/fi",
+            "\"imagename eq X2.EXE\"",
+            "/fo",
+            "csv",
+            "/nh",
+        ])?;
         Ok(parse_tasklist_pid(&String::from_utf8_lossy(&out.stdout)))
     }
 
@@ -682,23 +894,49 @@ impl Host for SshHost {
     }
 
     fn clock(&self) -> Result<String> {
-        Ok(self.ps("(Get-Date).ToUniversalTime().ToString('o')")?.trim().to_owned())
+        Ok(self
+            .ps("(Get-Date).ToUniversalTime().ToString('o')")?
+            .trim()
+            .to_owned())
     }
 
     fn stage_in(&self, set: &crate::ops::StageSet, file: &Path) -> Result<Staged> {
         let root = crate::paths::absolute(&set.root);
         let file = crate::paths::resolve(file);
-        let rel_file = file.strip_prefix(&root).map_err(|_| Error::internal(format!("{} is not under {}", file.display(), root.display())))?;
+        let rel_file = file.strip_prefix(&root).map_err(|_| {
+            Error::internal(format!(
+                "{} is not under {}",
+                file.display(),
+                root.display()
+            ))
+        })?;
         let key = fnv(&root.to_string_lossy());
-        let base = root.file_name().map(|n| n.to_string_lossy().replace(' ', "_")).unwrap_or_else(|| "root".into());
+        let base = root
+            .file_name()
+            .map(|n| n.to_string_lossy().replace(' ', "_"))
+            .unwrap_or_else(|| "root".into());
         let win_root = format!(r"{ROOT}\work\{base}-{}", &key[..8]);
 
         let mpath = Self::state_dir()?.join(format!("{key}.json"));
-        let old: Manifest = std::fs::read(&mpath).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-        let now = Manifest { files: stamps(&root, &set.files) };
-        let changed: Vec<String> = now.files.iter().filter(|(k, v)| old.files.get(*k) != Some(v)).map(|(k, _)| k.clone()).collect();
+        let old: Manifest = std::fs::read(&mpath)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        let now = Manifest {
+            files: stamps(&root, &set.files),
+        };
+        let changed: Vec<String> = now
+            .files
+            .iter()
+            .filter(|(k, v)| old.files.get(*k) != Some(v))
+            .map(|(k, _)| k.clone())
+            .collect();
         let remote_missing = !self.exists(&win_root)?;
-        let send: Vec<String> = if remote_missing { now.files.keys().cloned().collect() } else { changed };
+        let send: Vec<String> = if remote_missing {
+            now.files.keys().cloned().collect()
+        } else {
+            changed
+        };
 
         if !send.is_empty() {
             let tmp = Self::local_tmp()?;
@@ -717,7 +955,10 @@ impl Host for SshHost {
         }
         std::fs::write(&mpath, serde_json::to_vec(&now)?)?;
         Ok(Staged {
-            win_file: format!(r"{win_root}\{}", rel_file.to_string_lossy().replace('/', "\\")),
+            win_file: format!(
+                r"{win_root}\{}",
+                rel_file.to_string_lossy().replace('/', "\\")
+            ),
             win_root,
             local_root: root,
             copied: true,
@@ -728,17 +969,34 @@ impl Host for SshHost {
     fn staged_location(&self, root: &Path, file: &Path) -> Result<Staged> {
         let root = crate::paths::absolute(root);
         let file = crate::paths::resolve(file);
-        let rel = file.strip_prefix(&root).map_err(|_| Error::usage("file is outside the staged root"))?;
+        let rel = file
+            .strip_prefix(&root)
+            .map_err(|_| Error::usage("file is outside the staged root"))?;
         let key = fnv(&root.to_string_lossy());
-        let base = root.file_name().map(|n| n.to_string_lossy().replace(' ', "_")).unwrap_or_else(|| "root".into());
+        let base = root
+            .file_name()
+            .map(|n| n.to_string_lossy().replace(' ', "_"))
+            .unwrap_or_else(|| "root".into());
         let win_root = format!(r"{ROOT}\work\{base}-{}", &key[..8]);
         if !Self::state_dir()?.join(format!("{key}.json")).exists() || !self.exists(&win_root)? {
-            return Err(Error::not_found("this project has no staged copy").hint("run `ace designer push <project>` first"));
+            return Err(Error::not_found("this project has no staged copy")
+                .hint("run `ace designer push <project>` first"));
         }
-        Ok(Staged { win_file: format!(r"{win_root}\{}", rel.to_string_lossy().replace('/', "\\")), win_root, local_root: root, copied: true, sent: vec![] })
+        Ok(Staged {
+            win_file: format!(r"{win_root}\{}", rel.to_string_lossy().replace('/', "\\")),
+            win_root,
+            local_root: root,
+            copied: true,
+            sent: vec![],
+        })
     }
 
-    fn stage_out(&self, staged: &Staged, since: &str, opts: altium_format::fsx::WriteOpts) -> Result<(Vec<PathBuf>, String)> {
+    fn stage_out(
+        &self,
+        staged: &Staged,
+        since: &str,
+        opts: altium_format::fsx::WriteOpts,
+    ) -> Result<(Vec<PathBuf>, String)> {
         let listing = self.ps(&format!(
             "$t = [DateTime]::Parse({1}).ToUniversalTime(); $r = (Resolve-Path -LiteralPath {0}).Path
              'NOW ' + (Get-Date).ToUniversalTime().ToString('o')
@@ -747,31 +1005,53 @@ impl Host for SshHost {
             psq(&staged.win_root),
             psq(since)
         ))?;
-        let now = listing.lines().find_map(|l| l.trim().strip_prefix("NOW ")).unwrap_or_default().to_owned();
-        let files: Vec<String> =
-            listing.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("NOW ") && !l.to_ascii_lowercase().ends_with(".bak")).map(|l| l.replace('\\', "/")).collect();
+        let now = listing
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("NOW "))
+            .unwrap_or_default()
+            .to_owned();
+        let files: Vec<String> = listing
+            .lines()
+            .map(str::trim)
+            .filter(|l| {
+                !l.is_empty() && !l.starts_with("NOW ") && !l.to_ascii_lowercase().ends_with(".bak")
+            })
+            .map(|l| l.replace('\\', "/"))
+            .collect();
         if files.is_empty() {
             return Ok((vec![], now));
         }
         let key = fnv(&staged.local_root.to_string_lossy());
         let mpath = Self::state_dir()?.join(format!("{key}.json"));
         let baseline: Manifest = serde_json::from_slice(&std::fs::read(&mpath)?).map_err(|e| {
-            Error::new(ErrorCode::Unsafe, format!("invalid sync manifest: {e}")).hint("stage the project again before pulling")
+            Error::new(ErrorCode::Unsafe, format!("invalid sync manifest: {e}"))
+                .hint("stage the project again before pulling")
         })?;
         let mut pending = vec![];
         for f in &files {
             let path = safe_pull_path(&staged.local_root, f)?;
-            let data = self.read(&format!(r"{}\{}", staged.win_root, f.replace('/', "\\")))?.ok_or_else(|| {
-                Error::not_found(format!("remote output disappeared: {f}")).hint("retry `ace designer pull`")
-            })?;
+            let data = self
+                .read(&format!(r"{}\{}", staged.win_root, f.replace('/', "\\")))?
+                .ok_or_else(|| {
+                    Error::not_found(format!("remote output disappeared: {f}"))
+                        .hint("retry `ace designer pull`")
+                })?;
             verify_pull_target(&path, f, &baseline, &data)?;
             pending.push((path, data));
         }
         write_pulled_files(pending, opts)?;
-        if opts.dry_run { return Ok((files.iter().map(|f| staged.local_root.join(f)).collect(), String::new())); }
+        if opts.dry_run {
+            return Ok((
+                files.iter().map(|f| staged.local_root.join(f)).collect(),
+                String::new(),
+            ));
+        }
         // Record the new state so these files are not sent back on the next sync.
         let mpath = Self::state_dir()?.join(format!("{key}.json"));
-        let mut m: Manifest = std::fs::read(&mpath).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        let mut m: Manifest = std::fs::read(&mpath)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
         let mut fresh = BTreeMap::new();
         scan(&staged.local_root, &staged.local_root, &mut fresh);
         for f in &files {
@@ -780,10 +1060,17 @@ impl Host for SshHost {
             }
         }
         std::fs::write(&mpath, serde_json::to_vec(&m)?)?;
-        Ok((files.iter().map(|f| staged.local_root.join(f)).collect(), now))
+        Ok((
+            files.iter().map(|f| staged.local_root.join(f)).collect(),
+            now,
+        ))
     }
 
-    fn write_and_launch(&self, files: &[(String, Vec<u8>)], args: &[String]) -> Result<Option<u32>> {
+    fn write_and_launch(
+        &self,
+        files: &[(String, Vec<u8>)],
+        args: &[String],
+    ) -> Result<Option<u32>> {
         let mut all = files.to_vec();
         all.push(self.launch_payload(args)?);
         self.write_many(&all)?;
@@ -791,23 +1078,39 @@ impl Host for SshHost {
     }
 
     fn ps_interactive(&self, script: &str, timeout: Duration) -> Result<Vec<u8>> {
-        let id = format!("{}-{}", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"), std::process::id());
+        let id = format!(
+            "{}-{}",
+            chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"),
+            std::process::id()
+        );
         let ps1 = format!(r"{ROOT}\ps\{id}.ps1");
         let out = format!(r"{ROOT}\ps\{id}.out");
         let mut body = vec![0xef, 0xbb, 0xbf];
         body.extend_from_slice(ps_with_out(script, &out).as_bytes());
         self.write(&ps1, &body)?;
-        self.run_interactive(&format!("powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{ps1}\""))?;
+        self.run_interactive(&format!(
+            "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{ps1}\""
+        ))?;
         let t0 = Instant::now();
         while t0.elapsed() < timeout {
             std::thread::sleep(Duration::from_millis(700));
             if let Some(b) = self.read(&out)? {
-                let _ = self.sftp(&format!("-rm \"{}\"\n-rm \"{}\"\n", sftp_path(&ps1), sftp_path(&out)));
+                let _ = self.sftp(&format!(
+                    "-rm \"{}\"\n-rm \"{}\"\n",
+                    sftp_path(&ps1),
+                    sftp_path(&out)
+                ));
                 return Ok(b);
             }
         }
-        Err(Error::new(ErrorCode::Timeout, format!("no result from the desktop session after {}s", timeout.as_secs()))
-            .hint("is a user logged in to the Windows desktop? (`ace designer setup`)"))
+        Err(Error::new(
+            ErrorCode::Timeout,
+            format!(
+                "no result from the desktop session after {}s",
+                timeout.as_secs()
+            ),
+        )
+        .hint("is a user logged in to the Windows desktop? (`ace designer setup`)"))
     }
 }
 
@@ -823,10 +1126,14 @@ mod tests {
         assert_ne!(a.0, b.0);
         let payload = a.join("in-project.tar");
         std::fs::write(&payload, b"private design").unwrap();
-        #[cfg(unix)] {
+        #[cfg(unix)]
+        {
             use std::os::unix::fs::PermissionsExt;
             for path in [&parent, &a.0, &b.0] {
-                assert_eq!(std::fs::metadata(path).unwrap().permissions().mode() & 0o777, 0o700);
+                assert_eq!(
+                    std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+                    0o700
+                );
             }
         }
         let path = a.0.clone();
@@ -834,13 +1141,20 @@ mod tests {
         assert!(!path.exists());
         assert!(b.0.exists());
         drop(b);
-        #[cfg(unix)] {
+        #[cfg(unix)]
+        {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755)).unwrap();
-            assert_eq!(TransferDir::new_in(&parent).err().unwrap().code, ErrorCode::Unsafe);
+            assert_eq!(
+                TransferDir::new_in(&parent).err().unwrap().code,
+                ErrorCode::Unsafe
+            );
             std::fs::remove_dir(&parent).unwrap();
             std::os::unix::fs::symlink(std::env::temp_dir(), &parent).unwrap();
-            assert_eq!(TransferDir::new_in(&parent).err().unwrap().code, ErrorCode::Unsafe);
+            assert_eq!(
+                TransferDir::new_in(&parent).err().unwrap().code,
+                ErrorCode::Unsafe
+            );
             std::fs::remove_file(&parent).unwrap();
         }
         #[cfg(not(unix))]
@@ -849,21 +1163,58 @@ mod tests {
 
     #[test]
     fn destination_cannot_become_an_option() {
-        let sc = |user: &str, host: &str| SshConfig { host: host.into(), port: 22, user: user.into(), key: None };
-        for (user, host) in [("-oProxyCommand=true", "winbox"), ("bob", "-oProxyCommand=true"), ("-l", "-p")] {
-            assert_eq!(check_destination(&sc(user, host)).unwrap_err().code, ErrorCode::Usage, "{user}@{host}");
+        let sc = |user: &str, host: &str| SshConfig {
+            host: host.into(),
+            port: 22,
+            user: user.into(),
+            key: None,
+        };
+        for (user, host) in [
+            ("-oProxyCommand=true", "winbox"),
+            ("bob", "-oProxyCommand=true"),
+            ("-l", "-p"),
+        ] {
+            assert_eq!(
+                check_destination(&sc(user, host)).unwrap_err().code,
+                ErrorCode::Usage,
+                "{user}@{host}"
+            );
         }
         assert!(check_destination(&sc("john smith", "fe80::1%eth0")).is_ok());
-        let host = SshHost { sc: sc("bob", "winbox"), altium_dir: String::new() };
-        let args: Vec<_> = host.ssh_base().get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let host = SshHost {
+            sc: sc("bob", "winbox"),
+            altium_dir: String::new(),
+        };
+        let args: Vec<_> = host
+            .ssh_base()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         assert_eq!(args[args.len() - 2..], ["--", "bob@winbox"]);
     }
 
     #[test]
     fn path_options_survive_spaces_percent_and_quotes() {
-        assert_eq!(path_opt("UserKnownHostsFile", Path::new("/home/John Smith/.ssh/known_hosts_altium"), ""), "UserKnownHostsFile=\"/home/John Smith/.ssh/known_hosts_altium\"");
-        assert_eq!(path_opt("ControlPath", Path::new("/home/u/.ssh/cm-altium-fe80::1%eth0-22"), "-%r"), "ControlPath=\"/home/u/.ssh/cm-altium-fe80::1%%eth0-22-%r\"");
-        assert_eq!(path_opt("UserKnownHostsFile", Path::new(r#"C:\Users\a "b"\k"#), ""), r#"UserKnownHostsFile="C:\\Users\\a \"b\"\\k""#);
+        assert_eq!(
+            path_opt(
+                "UserKnownHostsFile",
+                Path::new("/home/John Smith/.ssh/known_hosts_altium"),
+                ""
+            ),
+            "UserKnownHostsFile=\"/home/John Smith/.ssh/known_hosts_altium\""
+        );
+        assert_eq!(
+            path_opt(
+                "ControlPath",
+                Path::new("/home/u/.ssh/cm-altium-fe80::1%eth0-22"),
+                "-%r"
+            ),
+            "ControlPath=\"/home/u/.ssh/cm-altium-fe80::1%%eth0-22-%r\""
+        );
+        assert_eq!(
+            path_opt("UserKnownHostsFile", Path::new(r#"C:\Users\a "b"\k"#), ""),
+            r#"UserKnownHostsFile="C:\\Users\\a \"b\"\\k""#
+        );
     }
 
     #[cfg(unix)]
@@ -873,7 +1224,15 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let src = dir.join("src");
         std::fs::create_dir_all(src.join("sub")).unwrap();
-        let names = ["-old.SchDoc", "--exclude=board.PcbDoc", "a\\b.txt", "nl\nname.txt", "sub/sp ace.txt", "x'$(echo hi)`id`;.txt", "board.PcbDoc"];
+        let names = [
+            "-old.SchDoc",
+            "--exclude=board.PcbDoc",
+            "a\\b.txt",
+            "nl\nname.txt",
+            "sub/sp ace.txt",
+            "x'$(echo hi)`id`;.txt",
+            "board.PcbDoc",
+        ];
         for n in names {
             std::fs::write(src.join(n), n).unwrap();
         }
@@ -882,7 +1241,16 @@ mod tests {
         pack(&src, &files, &dir.join("list"), &dir.join("out.tar")).unwrap();
         let out = dir.join("out");
         std::fs::create_dir_all(&out).unwrap();
-        assert!(Command::new("tar").arg("-xf").arg(dir.join("out.tar")).arg("-C").arg(&out).status().unwrap().success());
+        assert!(
+            Command::new("tar")
+                .arg("-xf")
+                .arg(dir.join("out.tar"))
+                .arg("-C")
+                .arg(&out)
+                .status()
+                .unwrap()
+                .success()
+        );
         for n in names {
             assert_eq!(std::fs::read_to_string(out.join(n)).unwrap(), n);
         }
@@ -899,7 +1267,15 @@ mod tests {
         std::fs::write(dir.join("p/A.SchDoc"), b"abc").unwrap();
         std::fs::write(dir.join("outside.txt"), b"x").unwrap();
         std::os::unix::fs::symlink(dir.join("outside.txt"), dir.join("p/link.SchDoc")).unwrap();
-        let got = stamps(&dir.join("p"), &[dir.join("p/A.SchDoc"), dir.join("p/link.SchDoc"), dir.join("outside.txt"), dir.join("p/missing.SchDoc")]);
+        let got = stamps(
+            &dir.join("p"),
+            &[
+                dir.join("p/A.SchDoc"),
+                dir.join("p/link.SchDoc"),
+                dir.join("outside.txt"),
+                dir.join("p/missing.SchDoc"),
+            ],
+        );
         assert_eq!(got.keys().collect::<Vec<_>>(), ["A.SchDoc"]);
         assert_eq!(got["A.SchDoc"].0, 3);
         std::fs::remove_dir_all(dir).unwrap();
@@ -916,12 +1292,27 @@ mod tests {
 
     #[test]
     fn ssh_requires_a_pinned_host_key() {
-        let host = SshHost { sc: SshConfig { host: "example.invalid".into(), port: 22, user: "test".into(), key: None }, altium_dir: String::new() };
+        let host = SshHost {
+            sc: SshConfig {
+                host: "example.invalid".into(),
+                port: 22,
+                user: "test".into(),
+                key: None,
+            },
+            altium_dir: String::new(),
+        };
         let mut command = Command::new("ssh");
         host.common_opts(&mut command);
-        let args: Vec<_> = command.get_args().map(|v| v.to_string_lossy().into_owned()).collect();
+        let args: Vec<_> = command
+            .get_args()
+            .map(|v| v.to_string_lossy().into_owned())
+            .collect();
         assert!(args.iter().any(|v| v == "StrictHostKeyChecking=yes"));
-        assert!(!args.iter().any(|v| v.contains("accept-new") || v == "StrictHostKeyChecking=no"));
+        assert!(
+            !args
+                .iter()
+                .any(|v| v.contains("accept-new") || v == "StrictHostKeyChecking=no")
+        );
         assert!(args.iter().any(|v| v.contains("known_hosts_altium")));
     }
 
@@ -936,15 +1327,36 @@ mod tests {
         scan(&dir, &dir, &mut baseline.files);
         assert!(verify_pull_target(&path, "board.PcbDoc", &baseline, b"remote").is_ok());
         std::fs::write(&path, b"local edit").unwrap();
-        assert_eq!(verify_pull_target(&path, "board.PcbDoc", &baseline, b"remote").unwrap_err().code, ErrorCode::Unsafe);
+        assert_eq!(
+            verify_pull_target(&path, "board.PcbDoc", &baseline, b"remote")
+                .unwrap_err()
+                .code,
+            ErrorCode::Unsafe
+        );
         assert_eq!(std::fs::read(&path).unwrap(), b"local edit");
         assert!(verify_pull_target(&path, "board.PcbDoc", &baseline, b"local edit").is_ok());
-        assert!(verify_pull_target(&path, "board.PcbDoc", &Manifest::default(), b"remote").is_err());
-        for path in ["../board", "/etc/passwd", "C:/board", "sub/../../board", "sub\\board", ""] {
-            assert_eq!(safe_pull_path(&dir, path).unwrap_err().code, ErrorCode::Unsafe);
+        assert!(
+            verify_pull_target(&path, "board.PcbDoc", &Manifest::default(), b"remote").is_err()
+        );
+        for path in [
+            "../board",
+            "/etc/passwd",
+            "C:/board",
+            "sub/../../board",
+            "sub\\board",
+            "",
+        ] {
+            assert_eq!(
+                safe_pull_path(&dir, path).unwrap_err().code,
+                ErrorCode::Unsafe
+            );
         }
-        assert_eq!(safe_pull_path(&dir, "outputs/gerber.GTL").unwrap(), dir.join("outputs/gerber.GTL"));
-        #[cfg(unix)] {
+        assert_eq!(
+            safe_pull_path(&dir, "outputs/gerber.GTL").unwrap(),
+            dir.join("outputs/gerber.GTL")
+        );
+        #[cfg(unix)]
+        {
             std::os::unix::fs::symlink(std::env::temp_dir(), dir.join("link")).unwrap();
             assert!(safe_pull_path(&dir, "link/other").is_err());
         }
@@ -960,43 +1372,86 @@ mod tests {
         let path = dir.join("board.PcbDoc");
         std::fs::write(&path, b"original").unwrap();
         let files = |data: &[u8]| vec![(path.clone(), data.to_vec())];
-        write_pulled_files(files(b"preview"), WriteOpts { dry_run: true, no_backup: false }).unwrap();
+        write_pulled_files(
+            files(b"preview"),
+            WriteOpts {
+                dry_run: true,
+                no_backup: false,
+            },
+        )
+        .unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"original");
         assert!(!dir.join("board.PcbDoc.bak").exists());
         write_pulled_files(files(b"first"), WriteOpts::default()).unwrap();
         write_pulled_files(files(b"second"), WriteOpts::default()).unwrap();
-        assert_eq!(std::fs::read(dir.join("board.PcbDoc.bak")).unwrap(), b"original");
+        assert_eq!(
+            std::fs::read(dir.join("board.PcbDoc.bak")).unwrap(),
+            b"original"
+        );
         assert_eq!(std::fs::read(&path).unwrap(), b"second");
         std::fs::remove_file(dir.join("board.PcbDoc.bak")).unwrap();
-        write_pulled_files(files(b"opt out"), WriteOpts { dry_run: false, no_backup: true }).unwrap();
+        write_pulled_files(
+            files(b"opt out"),
+            WriteOpts {
+                dry_run: false,
+                no_backup: true,
+            },
+        )
+        .unwrap();
         assert!(!dir.join("board.PcbDoc.bak").exists());
         let nested = dir.join("uncreated/board.PcbDoc");
-        write_pulled_files(vec![(nested, b"preview".to_vec())], WriteOpts { dry_run: true, no_backup: false }).unwrap();
+        write_pulled_files(
+            vec![(nested, b"preview".to_vec())],
+            WriteOpts {
+                dry_run: true,
+                no_backup: false,
+            },
+        )
+        .unwrap();
         assert!(!dir.join("uncreated").exists());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn runner_definition() {
-        assert!(!runner_xml_current("<Arguments>/c C:\\altium-cli-extended\\run.cmd >> C:\\altium-cli-extended\\run.log 2>&1</Arguments>"));
-        assert!(!runner_xml_current("<Arguments>/c C:\\altium-cli-extended\\run.cmd</Arguments>"));
-        assert!(!runner_xml_current("<Command>conhost.exe</Command><Arguments>--headless cmd.exe /c C:\\altium-cli-extended\\run.cmd</Arguments><RunLevel>HighestAvailable</RunLevel>"));
-        assert!(runner_xml_current("<Command>conhost.exe</Command><Arguments>--headless cmd.exe /c C:\\altium-cli-extended\\run.cmd</Arguments><RunLevel>LeastPrivilege</RunLevel>"));
+        assert!(!runner_xml_current(
+            "<Arguments>/c C:\\altium-cli-extended\\run.cmd >> C:\\altium-cli-extended\\run.log 2>&1</Arguments>"
+        ));
+        assert!(!runner_xml_current(
+            "<Arguments>/c C:\\altium-cli-extended\\run.cmd</Arguments>"
+        ));
+        assert!(!runner_xml_current(
+            "<Command>conhost.exe</Command><Arguments>--headless cmd.exe /c C:\\altium-cli-extended\\run.cmd</Arguments><RunLevel>HighestAvailable</RunLevel>"
+        ));
+        assert!(runner_xml_current(
+            "<Command>conhost.exe</Command><Arguments>--headless cmd.exe /c C:\\altium-cli-extended\\run.cmd</Arguments><RunLevel>LeastPrivilege</RunLevel>"
+        ));
         let wide = "<Command>conhost.exe</Command><Arguments>--headless cmd.exe /c C:\\altium-cli-extended\\run.cmd</Arguments><RunLevel>LeastPrivilege</RunLevel>".encode_utf16().flat_map(u16::to_le_bytes).collect::<Vec<_>>();
         assert!(runner_xml_current(&String::from_utf8_lossy(&wide)));
-        assert!(RUNNER_CMD.contains("C:\\altium-cli-extended\\run\\*.cmd") && !RUNNER_CMD.contains("run.log"));
+        assert!(
+            RUNNER_CMD.contains("C:\\altium-cli-extended\\run\\*.cmd")
+                && !RUNNER_CMD.contains("run.log")
+        );
     }
 
     #[test]
     fn tasklist_pid() {
         let out = "\r\n\"X2.EXE\",\"7556\",\"Console\",\"1\",\"525,276 K\"\r\n";
         assert_eq!(parse_tasklist_pid(out), Some(7556));
-        assert_eq!(parse_tasklist_pid("INFO: No tasks are running which match the specified criteria.\r\n"), None);
+        assert_eq!(
+            parse_tasklist_pid(
+                "INFO: No tasks are running which match the specified criteria.\r\n"
+            ),
+            None
+        );
     }
 
     #[test]
     fn sftp_paths() {
-        assert_eq!(sftp_path(r"C:\altium-cli-extended\jobs"), "/C:/altium-cli-extended/jobs");
+        assert_eq!(
+            sftp_path(r"C:\altium-cli-extended\jobs"),
+            "/C:/altium-cli-extended/jobs"
+        );
         assert_eq!(
             SshHost::mkdir_lines(r"C:\altium-cli-extended\jobs\1"),
             "-mkdir \"/C:/altium-cli-extended\"\n-mkdir \"/C:/altium-cli-extended/jobs\"\n-mkdir \"/C:/altium-cli-extended/jobs/1\"\n"

@@ -56,7 +56,13 @@ pub struct Edit {
 
 impl Edit {
     fn unchanged(bytes: &[u8]) -> Edit {
-        Edit { bytes: bytes.to_vec(), changes: vec![], warnings: vec![], written: vec![], removed: vec![] }
+        Edit {
+            bytes: bytes.to_vec(),
+            changes: vec![],
+            warnings: vec![],
+            written: vec![],
+            removed: vec![],
+        }
     }
 }
 
@@ -66,7 +72,8 @@ fn unsafe_err(m: impl Into<String>) -> Error {
 
 fn check_text(what: &str, v: &str) -> Result<()> {
     if v.contains(['|', '\0']) {
-        return Err(Error::usage(format!("{what} cannot contain | or NUL")).hint("remove the field separator or NUL from the value"));
+        return Err(Error::usage(format!("{what} cannot contain | or NUL"))
+            .hint("remove the field separator or NUL from the value"));
     }
     Ok(())
 }
@@ -76,7 +83,13 @@ fn check_text(what: &str, v: &str) -> Result<()> {
 pub fn storage_name(name: &str) -> String {
     let mut units = 0;
     name.chars()
-        .map(|c| if matches!(c, '/' | '\\' | ':' | '!') || c.is_control() { '_' } else { c })
+        .map(|c| {
+            if matches!(c, '/' | '\\' | ':' | '!') || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
         .take_while(|c| {
             units += c.len_utf16();
             units <= 31
@@ -86,18 +99,29 @@ pub fn storage_name(name: &str) -> String {
 
 fn check_footprint_name(name: &str) -> Result<()> {
     if name.trim().is_empty() {
-        return Err(Error::usage("the footprint name is empty").hint("choose a nonempty footprint name"));
+        return Err(
+            Error::usage("the footprint name is empty").hint("choose a nonempty footprint name")
+        );
     }
     check_text("footprint names", name)?;
     if name.contains('=') || name.trim() != name {
-        return Err(Error::usage(format!("footprint name {name:?} cannot contain = or leading/trailing spaces")).hint("remove = and surrounding spaces"));
+        return Err(Error::usage(format!(
+            "footprint name {name:?} cannot contain = or leading/trailing spaces"
+        ))
+        .hint("remove = and surrounding spaces"));
     }
     if decode_ansi(&encode_ansi_strict(name)?) != name {
-        return Err(Error::usage("name has characters the current code page cannot store")
-            .hint("choose an ANSI-encodable name or pass --codepage <label> matching the library"));
+        return Err(
+            Error::usage("name has characters the current code page cannot store").hint(
+                "choose an ANSI-encodable name or pass --codepage <label> matching the library",
+            ),
+        );
     }
     if encode_ansi_strict(name)?.len() > 255 {
-        return Err(Error::usage(format!("footprint name {name:?} is longer than 255 bytes")).hint("shorten the name to at most 255 encoded bytes"));
+        return Err(
+            Error::usage(format!("footprint name {name:?} is longer than 255 bytes"))
+                .hint("shorten the name to at most 255 encoded bytes"),
+        );
     }
     Ok(())
 }
@@ -114,12 +138,16 @@ struct List {
 impl List {
     fn parse(buf: &[u8]) -> Result<List> {
         if buf.len() < 8 {
-            return Err(unsafe_err("Library/Data is too short to hold a footprint list"));
+            return Err(unsafe_err(
+                "Library/Data is too short to hold a footprint list",
+            ));
         }
         let word = u32::from_le_bytes(buf[..4].try_into().unwrap());
         let len = (word & 0x00FF_FFFF) as usize;
         if 4 + len + 4 > buf.len() {
-            return Err(unsafe_err("Library/Data: the property record length is out of range"));
+            return Err(unsafe_err(
+                "Library/Data: the property record length is out of range",
+            ));
         }
         let head = buf[..4 + len].to_vec();
         let mut pos = 4 + len;
@@ -128,18 +156,25 @@ impl List {
         let mut names = Vec::with_capacity(count);
         for i in 0..count {
             if pos + 4 > buf.len() {
-                return Err(unsafe_err(format!("Library/Data: footprint list truncated after {i} of {count} names")));
+                return Err(unsafe_err(format!(
+                    "Library/Data: footprint list truncated after {i} of {count} names"
+                )));
             }
             let n = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap()) as usize;
             pos += 4;
             if n < 1 || pos + n > buf.len() || buf[pos] as usize + 1 != n {
-                return Err(unsafe_err(format!("Library/Data: footprint name {i} is not a length-prefixed string")));
+                return Err(unsafe_err(format!(
+                    "Library/Data: footprint name {i} is not a length-prefixed string"
+                )));
             }
             names.push(decode_ansi(&buf[pos + 1..pos + n]));
             pos += n;
         }
         if pos != buf.len() {
-            return Err(unsafe_err(format!("Library/Data: {} bytes after the footprint list", buf.len() - pos)));
+            return Err(unsafe_err(format!(
+                "Library/Data: {} bytes after the footprint list",
+                buf.len() - pos
+            )));
         }
         Ok(List { head, names })
     }
@@ -151,7 +186,9 @@ impl List {
             check_footprint_name(n)?;
             let b = encode_ansi_strict(n)?;
             if b.is_empty() || b.len() > 255 {
-                return Err(unsafe_err(format!("footprint name {n:?} does not fit the library list")));
+                return Err(unsafe_err(format!(
+                    "footprint name {n:?} does not fit the library list"
+                )));
             }
             out.extend(((b.len() + 1) as u32).to_le_bytes());
             out.push(b.len() as u8);
@@ -166,21 +203,29 @@ impl List {
 /// Split a single-record stream (`u32 length` + `|K=V` bytes) into its length word and body.
 fn split_record(stream: &str, buf: &[u8]) -> Result<(u32, Vec<u8>)> {
     if buf.len() < 4 {
-        return Err(unsafe_err(format!("{stream} is shorter than its length word")));
+        return Err(unsafe_err(format!(
+            "{stream} is shorter than its length word"
+        )));
     }
     let word = u32::from_le_bytes(buf[..4].try_into().unwrap());
     let len = (word & 0x00FF_FFFF) as usize;
     if 4 + len != buf.len() {
-        return Err(unsafe_err(format!("{stream} holds more than one record; refusing to rewrite it")));
+        return Err(unsafe_err(format!(
+            "{stream} holds more than one record; refusing to rewrite it"
+        )));
     }
     Ok((word, buf[4..].to_vec()))
 }
 
 fn join_record(word: u32, body: &[u8]) -> Result<Vec<u8>> {
     if body.len() > 0x00FF_FFFF {
-        return Err(unsafe_err("the edited record is too large for a length word"));
+        return Err(unsafe_err(
+            "the edited record is too large for a length word",
+        ));
     }
-    let mut out = ((word & 0xFF00_0000) | body.len() as u32).to_le_bytes().to_vec();
+    let mut out = ((word & 0xFF00_0000) | body.len() as u32)
+        .to_le_bytes()
+        .to_vec();
     out.extend(body);
     Ok(out)
 }
@@ -188,15 +233,21 @@ fn join_record(word: u32, body: &[u8]) -> Result<Vec<u8>> {
 /// Replace the name at the front of a footprint `Data` stream (`u32 length` + pascal name).
 fn set_data_name(data: &[u8], name: &str) -> Result<Vec<u8>> {
     if data.len() < 5 {
-        return Err(unsafe_err("footprint Data stream is too short to hold its name"));
+        return Err(unsafe_err(
+            "footprint Data stream is too short to hold its name",
+        ));
     }
     let n = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
     if n < 1 || 4 + n > data.len() || data[4] as usize + 1 != n {
-        return Err(unsafe_err("footprint Data stream does not start with a length-prefixed name; refusing to rewrite it"));
+        return Err(unsafe_err(
+            "footprint Data stream does not start with a length-prefixed name; refusing to rewrite it",
+        ));
     }
     let b = encode_ansi_strict(name)?;
     if b.is_empty() || b.len() > 255 {
-        return Err(unsafe_err(format!("footprint name {name:?} does not fit the Data stream")));
+        return Err(unsafe_err(format!(
+            "footprint name {name:?} does not fit the Data stream"
+        )));
     }
     let mut out = Vec::with_capacity(data.len() - n + b.len() + 1);
     out.extend(((b.len() + 1) as u32).to_le_bytes());
@@ -227,7 +278,8 @@ fn read_storage(cf: &mut Compound, storage: &str) -> Result<Vec<(String, Vec<u8>
         }
     }
     if out.is_empty() {
-        return Err(unsafe_err(format!("storage {storage:?} has no streams")).hint("the footprint cannot be copied natively; do it in Altium"));
+        return Err(unsafe_err(format!("storage {storage:?} has no streams"))
+            .hint("the footprint cannot be copied natively; do it in Altium"));
     }
     Ok(out)
 }
@@ -243,9 +295,13 @@ fn write_storage(
 ) -> Result<()> {
     cf.create_storage(storage)?;
     for (rest, mut data) in streams {
-        if rest == "Data" && let Some(n) = name {
+        if rest == "Data"
+            && let Some(n) = name
+        {
             data = set_data_name(&data, n)?;
-        } else if rest == "Parameters" && let Some((from, to)) = pattern {
+        } else if rest == "Parameters"
+            && let Some((from, to)) = pattern
+        {
             data = set_pattern(&data, from, to)?;
         }
         let dst = format!("{storage}/{rest}");
@@ -275,12 +331,16 @@ fn model_records(buf: &[u8]) -> Result<Vec<&[u8]>> {
     let mut pos = 0;
     while pos < buf.len() {
         if pos + 4 > buf.len() {
-            return Err(unsafe_err("Library/Models/Data has trailing bytes; refusing to rewrite it"));
+            return Err(unsafe_err(
+                "Library/Models/Data has trailing bytes; refusing to rewrite it",
+            ));
         }
         let word = u32::from_le_bytes(buf[pos..pos + 4].try_into().unwrap());
         let len = (word & 0x00FF_FFFF) as usize;
         if pos + 4 + len > buf.len() {
-            return Err(unsafe_err("Library/Models/Data has a truncated record; refusing to rewrite it"));
+            return Err(unsafe_err(
+                "Library/Models/Data has a truncated record; refusing to rewrite it",
+            ));
         }
         out.push(&buf[pos..pos + 4 + len]);
         pos += 4 + len;
@@ -290,29 +350,41 @@ fn model_records(buf: &[u8]) -> Result<Vec<&[u8]>> {
 
 fn read_model_stream(cf: &mut Compound, path: &str) -> Result<Vec<u8>> {
     if cf.exists(path) {
-        cf.read(path).map_err(|e| e.hint("repair the model table in Altium Designer before copying; nothing was written"))
+        cf.read(path).map_err(|e| {
+            e.hint("repair the model table in Altium Designer before copying; nothing was written")
+        })
     } else {
         Ok(vec![])
     }
 }
 
 /// Copy the model `id` (record and embedded stream) from `src` into the target at `cf`.
-fn add_model(cf: &mut Compound, src: &PcbLib, scf: &mut Compound, id: &str, written: &mut Vec<String>) -> Result<()> {
+fn add_model(
+    cf: &mut Compound,
+    src: &PcbLib,
+    scf: &mut Compound,
+    id: &str,
+    written: &mut Vec<String>,
+) -> Result<()> {
     let sdata = read_model_stream(scf, "Library/Models/Data")?;
     let srecs = model_records(&sdata)?;
     let pos = srecs
         .iter()
         .position(|r| Props::parse(&r[4..]).get("ID").is_some_and(|x| x == id))
-        .ok_or_else(|| Error::not_found(format!("model {id} is not in the source library's Library/Models/Data")).hint("embed or repair this model in the source library using Altium Designer"))?;
-    let m = src
-        .models
-        .iter()
-        .find(|m| m.id == id)
-        .ok_or_else(|| Error::parse(format!("model {id} is not decoded in the source library")).hint("inspect `ace pcblib models` and repair the model table in Altium Designer"))?;
-    let stream = m
-        .stream
-        .clone()
-        .ok_or_else(|| unsafe_err(format!("model {} ({id}) has no embedded data", m.name)).hint("copy the footprint in Altium Designer"))?;
+        .ok_or_else(|| {
+            Error::not_found(format!(
+                "model {id} is not in the source library's Library/Models/Data"
+            ))
+            .hint("embed or repair this model in the source library using Altium Designer")
+        })?;
+    let m = src.models.iter().find(|m| m.id == id).ok_or_else(|| {
+        Error::parse(format!("model {id} is not decoded in the source library"))
+            .hint("inspect `ace pcblib models` and repair the model table in Altium Designer")
+    })?;
+    let stream = m.stream.clone().ok_or_else(|| {
+        unsafe_err(format!("model {} ({id}) has no embedded data", m.name))
+            .hint("copy the footprint in Altium Designer")
+    })?;
     let data = scf.read(&stream)?;
     let mut tdata = read_model_stream(cf, "Library/Models/Data")?;
     let index = {
@@ -328,7 +400,8 @@ fn add_model(cf: &mut Compound, src: &PcbLib, scf: &mut Compound, id: &str, writ
         h = vec![0; 4];
     }
     if h.len() < 4 {
-        return Err(Error::parse("Library/Models/Header is truncated").hint("repair the model table in Altium Designer before copying"));
+        return Err(Error::parse("Library/Models/Header is truncated")
+            .hint("repair the model table in Altium Designer before copying"));
     }
     h[..4].copy_from_slice(&((index + 1) as u32).to_le_bytes());
     cf.write("Library/Models/Header", &h)?;
@@ -366,7 +439,16 @@ impl Session {
             ))
             .hint("run `ace pcblib list` to see which footprint cannot be decoded"));
         }
-        Ok(Session { orig: bytes.to_vec(), cf, list, list_dirty: false, written: vec![], removed: vec![], changes: vec![], warnings: vec![] })
+        Ok(Session {
+            orig: bytes.to_vec(),
+            cf,
+            list,
+            list_dirty: false,
+            written: vec![],
+            removed: vec![],
+            changes: vec![],
+            warnings: vec![],
+        })
     }
 
     fn finish(mut self) -> Result<Edit> {
@@ -377,7 +459,13 @@ impl Session {
             self.cf.write("Library/Data", &self.list.to_bytes()?)?;
             self.written.push("Library/Data".into());
         }
-        Ok(Edit { bytes: self.cf.into_bytes()?, changes: self.changes, warnings: self.warnings, written: self.written, removed: self.removed })
+        Ok(Edit {
+            bytes: self.cf.into_bytes()?,
+            changes: self.changes,
+            warnings: self.warnings,
+            written: self.written,
+            removed: self.removed,
+        })
     }
 }
 
@@ -385,37 +473,63 @@ impl Session {
 
 /// Set (or add) a footprint parameter: `DESCRIPTION`, `HEIGHT` (with a unit), or any other
 /// `Parameters` key such as `PATTERN` or a user parameter.
-pub fn set_param(lib: &PcbLib, bytes: &[u8], footprint: &str, name: &str, value: &str) -> Result<Edit> {
+pub fn set_param(
+    lib: &PcbLib,
+    bytes: &[u8],
+    footprint: &str,
+    name: &str,
+    value: &str,
+) -> Result<Edit> {
     let fp = lib.footprint(footprint)?;
     let key = name.trim();
     if key.is_empty() || key.contains('=') || key.starts_with('%') {
-        return Err(Error::usage("parameter names cannot be empty or contain =").hint("keys as Altium stores them: DESCRIPTION, HEIGHT, PATTERN, ..."));
+        return Err(Error::usage("parameter names cannot be empty or contain =")
+            .hint("keys as Altium stores them: DESCRIPTION, HEIGHT, PATTERN, ..."));
     }
     check_text("parameter names", key)?;
     check_text("parameter values", value)?;
     let stream = format!("{}/Parameters", fp.storage);
     let mut s = Session::open(lib, bytes)?;
     let Some(buf) = s.cf.read_opt(&stream) else {
-        return Err(unsafe_err(format!("{} has no {stream}", fp.name)).hint("add the parameter in Altium Designer, then edit it here"));
+        return Err(unsafe_err(format!("{} has no {stream}", fp.name))
+            .hint("add the parameter in Altium Designer, then edit it here"));
     };
     let (word, body) = split_record(&stream, &buf)?;
     let p = Props::parse(&body);
     let (before, after, same) = if key.eq_ignore_ascii_case("HEIGHT") {
         let t = value.trim();
         if !(t.ends_with("mil") || t.ends_with("mm")) {
-            return Err(Error::usage(format!("height is a length ({value:?}); give a unit, e.g. 2.5mm or 60mil")).hint("append mm or mil, for example 2.5mm"));
+            return Err(Error::usage(format!(
+                "height is a length ({value:?}); give a unit, e.g. 2.5mm or 60mil"
+            ))
+            .hint("append mm or mil, for example 2.5mm"));
         }
-        let c = Coord::parse_len(t).ok_or_else(|| Error::usage(format!("bad length {value:?}")).hint("use a numeric height followed by mm or mil, for example 2.5mm"))?;
+        let c = Coord::parse_len(t).ok_or_else(|| {
+            Error::usage(format!("bad length {value:?}"))
+                .hint("use a numeric height followed by mm or mil, for example 2.5mm")
+        })?;
         let old = p.len("HEIGHT");
-        (old.map(crate::pcb::edit::mil_string), crate::pcb::edit::mil_string(c), old == Some(c))
+        (
+            old.map(crate::pcb::edit::mil_string),
+            crate::pcb::edit::mil_string(c),
+            old == Some(c),
+        )
     } else {
         let current = p.get(key);
-        (current.clone(), value.to_owned(), current.as_deref() == Some(value))
+        (
+            current.clone(),
+            value.to_owned(),
+            current.as_deref() == Some(value),
+        )
     };
     if same {
         return Ok(Edit::unchanged(bytes));
     }
-    let stored_key = p.entries().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(k, _)| k.to_owned()).unwrap_or_else(|| key.to_owned());
+    let stored_key = p
+        .entries()
+        .find(|(k, _)| k.eq_ignore_ascii_case(key))
+        .map(|(k, _)| k.to_owned())
+        .unwrap_or_else(|| key.to_owned());
     let mut body = body;
     set_text_field(&mut body, key, &after)?;
     s.cf.write(&stream, &join_record(word, &body)?)?;
@@ -444,18 +558,39 @@ pub fn rename(lib: &PcbLib, bytes: &[u8], footprint: &str, new_name: &str) -> Re
     if old_name == new_name {
         return Ok(Edit::unchanged(bytes));
     }
-    if lib.footprints.iter().any(|f| f.index != index && f.name.eq_ignore_ascii_case(new_name)) {
-        return Err(unsafe_err(format!("the library already has a footprint {new_name:?}")).hint("remove or rename that footprint first"));
+    if lib
+        .footprints
+        .iter()
+        .any(|f| f.index != index && f.name.eq_ignore_ascii_case(new_name))
+    {
+        return Err(
+            unsafe_err(format!("the library already has a footprint {new_name:?}"))
+                .hint("remove or rename that footprint first"),
+        );
     }
     let mut s = Session::open(lib, bytes)?;
     let new_storage = storage_name(new_name);
     let same_storage = new_storage.eq_ignore_ascii_case(&old_storage);
     if !same_storage {
-        if s.cf.storages("").iter().any(|x| x.eq_ignore_ascii_case(&new_storage)) {
-            return Err(unsafe_err(format!("storage {new_storage:?} already exists in the file")).hint("choose a name whose first 31 characters differ"));
+        if s.cf
+            .storages("")
+            .iter()
+            .any(|x| x.eq_ignore_ascii_case(&new_storage))
+        {
+            return Err(unsafe_err(format!(
+                "storage {new_storage:?} already exists in the file"
+            ))
+            .hint("choose a name whose first 31 characters differ"));
         }
         let streams = read_storage(&mut s.cf, &old_storage)?;
-        write_storage(&mut s.cf, &new_storage, streams, Some(new_name), Some((&old_name, new_name)), &mut s.written)?;
+        write_storage(
+            &mut s.cf,
+            &new_storage,
+            streams,
+            Some(new_name),
+            Some((&old_name, new_name)),
+            &mut s.written,
+        )?;
         s.cf.remove_storage(&old_storage)?;
         s.removed.push(old_storage.clone());
     } else {
@@ -478,12 +613,21 @@ pub fn rename(lib: &PcbLib, bytes: &[u8], footprint: &str, new_name: &str) -> Re
     if let Some(slot) = s.list.names.get_mut(index) {
         *slot = new_name.to_owned();
     } else {
-        return Err(Error::internal(format!("footprint {old_name} has no Library/Data entry")));
+        return Err(Error::internal(format!(
+            "footprint {old_name} has no Library/Data entry"
+        )));
     }
     s.list_dirty = true;
     s.changes.push(Change {
         target: new_name.to_owned(),
-        stream: format!("{}/Data", if same_storage { &old_storage } else { &new_storage }),
+        stream: format!(
+            "{}/Data",
+            if same_storage {
+                &old_storage
+            } else {
+                &new_storage
+            }
+        ),
         action: "rename".into(),
         key: "name".into(),
         before: Some(old_name),
@@ -533,23 +677,47 @@ pub fn copy_from(
     let src_storage = sfp.storage.clone();
     let name = new_name.unwrap_or(&src_name).to_owned();
     check_footprint_name(&name)?;
-    if lib.footprints.iter().any(|f| f.name.eq_ignore_ascii_case(&name)) {
-        return Err(unsafe_err(format!("the library already has a footprint {name:?}"))
-            .hint("pass --name to copy it under another name"));
+    if lib
+        .footprints
+        .iter()
+        .any(|f| f.name.eq_ignore_ascii_case(&name))
+    {
+        return Err(
+            unsafe_err(format!("the library already has a footprint {name:?}"))
+                .hint("pass --name to copy it under another name"),
+        );
     }
     let models = referenced_models(sfp);
     let mut s = Session::open(lib, bytes)?;
-    let linked = sfp.bodies.iter().filter(|b| !b.model_embedded && (!b.model_id.is_empty() || !b.model_name.is_empty())).count();
+    let linked = sfp
+        .bodies
+        .iter()
+        .filter(|b| !b.model_embedded && (!b.model_id.is_empty() || !b.model_name.is_empty()))
+        .count();
     if linked > 0 {
         s.warnings.push(format!("{linked} linked model(s) not embedded; they resolve through the target library's model search path"));
     }
     let storage = storage_name(&name);
-    if s.cf.storages("").iter().any(|x| x.eq_ignore_ascii_case(&storage)) {
-        return Err(unsafe_err(format!("storage {storage:?} already exists in the file")).hint("pass --name whose first 31 characters differ"));
+    if s.cf
+        .storages("")
+        .iter()
+        .any(|x| x.eq_ignore_ascii_case(&storage))
+    {
+        return Err(
+            unsafe_err(format!("storage {storage:?} already exists in the file"))
+                .hint("pass --name whose first 31 characters differ"),
+        );
     }
     let mut scf = Compound::from_bytes(&source.path, source_bytes.to_vec())?;
     let streams = read_storage(&mut scf, &src_storage)?;
-    write_storage(&mut s.cf, &storage, streams, Some(&name), Some((&src_name, &name)), &mut s.written)?;
+    write_storage(
+        &mut s.cf,
+        &storage,
+        streams,
+        Some(&name),
+        Some((&src_name, &name)),
+        &mut s.written,
+    )?;
     s.changes.push(Change {
         target: name.clone(),
         stream: storage,
@@ -584,19 +752,39 @@ pub fn copy_from(
 pub fn verify(old: &PcbLib, old_bytes: &[u8], edit: &Edit) -> Result<PcbLib> {
     let new = super::load_bytes(&old.path, edit.bytes.clone(), false)
         .map_err(|e| unsafe_err(format!("edited library does not re-parse: {}", e.message)))?;
-    let count = |l: &PcbLib| l.warnings.len() + l.footprints.iter().map(|f| f.warnings.len()).sum::<usize>();
+    let count = |l: &PcbLib| {
+        l.warnings.len() + l.footprints.iter().map(|f| f.warnings.len()).sum::<usize>()
+    };
     if count(&new) > count(old) {
-        return Err(unsafe_err("the edit introduced parse warnings").hint("nothing was written; report this library as unsupported"));
+        return Err(unsafe_err("the edit introduced parse warnings")
+            .hint("nothing was written; report this library as unsupported"));
     }
-    let removed = |p: &str| edit.removed.iter().any(|r| p.strip_prefix(r.as_str()).is_some_and(|rest| rest.starts_with('/')));
+    let removed = |p: &str| {
+        edit.removed.iter().any(|r| {
+            p.strip_prefix(r.as_str())
+                .is_some_and(|rest| rest.starts_with('/'))
+        })
+    };
     let mut a = Compound::from_bytes(&old.path, old_bytes.to_vec())?;
     let mut b = Compound::from_bytes(&old.path, edit.bytes.clone())?;
-    let mut keep_old: Vec<String> = a.streams().into_iter().map(|s| s.path).filter(|p| !edit.written.contains(p) && !removed(p)).collect();
-    let mut keep_new: Vec<String> = b.streams().into_iter().map(|s| s.path).filter(|p| !edit.written.contains(p)).collect();
+    let mut keep_old: Vec<String> = a
+        .streams()
+        .into_iter()
+        .map(|s| s.path)
+        .filter(|p| !edit.written.contains(p) && !removed(p))
+        .collect();
+    let mut keep_new: Vec<String> = b
+        .streams()
+        .into_iter()
+        .map(|s| s.path)
+        .filter(|p| !edit.written.contains(p))
+        .collect();
     keep_old.sort();
     keep_new.sort();
     if keep_old != keep_new {
-        return Err(unsafe_err(format!("the stream list changed unexpectedly: {keep_old:?} -> {keep_new:?}")));
+        return Err(unsafe_err(format!(
+            "the stream list changed unexpectedly: {keep_old:?} -> {keep_new:?}"
+        )));
     }
     for s in &keep_old {
         if a.read(s)? != b.read(s)? {
@@ -612,23 +800,37 @@ pub fn verify(old: &PcbLib, old_bytes: &[u8], edit: &Edit) -> Result<PcbLib> {
 fn check_change(new: &PcbLib, c: &Change) -> Result<()> {
     match c.action.as_str() {
         "remove" => {
-            if new.footprints.iter().any(|f| f.name.eq_ignore_ascii_case(&c.target)) {
-                return Err(unsafe_err(format!("{} is still in the library after its removal", c.target)));
+            if new
+                .footprints
+                .iter()
+                .any(|f| f.name.eq_ignore_ascii_case(&c.target))
+            {
+                return Err(unsafe_err(format!(
+                    "{} is still in the library after its removal",
+                    c.target
+                )));
             }
         }
         "rename" => {
             let before = c.before.as_deref().unwrap_or_default();
             if before != c.target && new.footprints.iter().any(|f| f.name == before) {
-                return Err(unsafe_err(format!("the old name {before:?} is still in the library")));
+                return Err(unsafe_err(format!(
+                    "the old name {before:?} is still in the library"
+                )));
             }
             if !new.footprints.iter().any(|f| f.name == c.target) {
-                return Err(unsafe_err(format!("the new name {:?} did not read back", c.target)));
+                return Err(unsafe_err(format!(
+                    "the new name {:?} did not read back",
+                    c.target
+                )));
             }
         }
         "copy" if c.key == "model_id" => {
             let id = c.after.as_deref().unwrap_or_default();
             if !new.models.iter().any(|m| m.id == id) {
-                return Err(unsafe_err(format!("model {id} is not in the edited library")));
+                return Err(unsafe_err(format!(
+                    "model {id} is not in the edited library"
+                )));
             }
         }
         "copy" => {
@@ -642,10 +844,16 @@ fn check_change(new: &PcbLib, c: &Change) -> Result<()> {
             } else if c.key.eq_ignore_ascii_case("HEIGHT") {
                 f.height.map(crate::pcb::edit::mil_string)
             } else {
-                f.parameters.iter().find(|(k, _)| k.eq_ignore_ascii_case(&c.key)).map(|(_, v)| v.clone())
+                f.parameters
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(&c.key))
+                    .map(|(_, v)| v.clone())
             };
             if got.as_deref() != Some(after) {
-                return Err(unsafe_err(format!("{}: {} reads back {got:?}, expected {after:?}", f.name, c.key)));
+                return Err(unsafe_err(format!(
+                    "{}: {} reads back {got:?}, expected {after:?}",
+                    f.name, c.key
+                )));
             }
         }
     }
@@ -662,19 +870,36 @@ mod tests {
         cf.create_storage_all("Library/Models").unwrap();
         let mut list = 0u32.to_le_bytes().to_vec();
         list.extend(0u32.to_le_bytes());
-        cf.create_stream("Library/Data").unwrap().write_all(&list).unwrap();
+        cf.create_stream("Library/Data")
+            .unwrap()
+            .write_all(&list)
+            .unwrap();
         let props = b"|ID=one|NAME=one.step|EMBED=TRUE\0";
         let mut record = (props.len() as u32).to_le_bytes().to_vec();
         record.extend(props);
-        cf.create_stream("Library/Models/Data").unwrap().write_all(&record).unwrap();
-        cf.create_stream("Library/Models/0").unwrap().write_all(b"model").unwrap();
+        cf.create_stream("Library/Models/Data")
+            .unwrap()
+            .write_all(&record)
+            .unwrap();
+        cf.create_stream("Library/Models/0")
+            .unwrap()
+            .write_all(b"model")
+            .unwrap();
         cf.flush().unwrap();
         let mut bytes = cf.into_inner().into_inner();
         if let Some(invalid_start) = corruption {
             let name: Vec<u8> = "Data\0".encode_utf16().flat_map(u16::to_le_bytes).collect();
             // CFB directory entries are 128 bytes; the Models/Data entry follows Library/Data.
-            let offset = bytes.as_chunks::<128>().0.iter().enumerate()
-                .filter(|(_, entry)| entry.starts_with(&name)).nth(1).unwrap().0 * 128;
+            let offset = bytes
+                .as_chunks::<128>()
+                .0
+                .iter()
+                .enumerate()
+                .filter(|(_, entry)| entry.starts_with(&name))
+                .nth(1)
+                .unwrap()
+                .0
+                * 128;
             if invalid_start {
                 bytes[offset + 116..offset + 120].copy_from_slice(&0xfffffff0u32.to_le_bytes());
             } else {
@@ -692,15 +917,41 @@ mod tests {
         for invalid_start in [false, true] {
             for corrupt_source in [false, true] {
                 let corrupt = model_library(Some(invalid_start));
-                let mut target = Compound::from_bytes(path, if corrupt_source { source_bytes.clone() } else { corrupt.clone() }).unwrap();
-                let mut scf = Compound::from_bytes(path, if corrupt_source { corrupt } else { source_bytes.clone() }).unwrap();
-                let damaged = if corrupt_source { &mut scf } else { &mut target };
+                let mut target = Compound::from_bytes(
+                    path,
+                    if corrupt_source {
+                        source_bytes.clone()
+                    } else {
+                        corrupt.clone()
+                    },
+                )
+                .unwrap();
+                let mut scf = Compound::from_bytes(
+                    path,
+                    if corrupt_source {
+                        corrupt
+                    } else {
+                        source_bytes.clone()
+                    },
+                )
+                .unwrap();
+                let damaged = if corrupt_source {
+                    &mut scf
+                } else {
+                    &mut target
+                };
                 assert!(damaged.exists("Library/Models/Data"));
                 assert!(damaged.read("Library/Models/Data").is_err());
                 let mut written = vec![];
                 let result = add_model(&mut target, &source, &mut scf, "one", &mut written);
-                assert!(result.is_err(), "copy unexpectedly replaced an unreadable model table");
-                assert!(written.is_empty(), "failed copy modified streams: {written:?}");
+                assert!(
+                    result.is_err(),
+                    "copy unexpectedly replaced an unreadable model table"
+                );
+                assert!(
+                    written.is_empty(),
+                    "failed copy modified streams: {written:?}"
+                );
             }
         }
     }
@@ -708,10 +959,16 @@ mod tests {
     #[test]
     fn storage_names_follow_altium() {
         assert_eq!(storage_name("SOIC-8"), "SOIC-8");
-        assert_eq!(storage_name("HC-49/U3H (low profile)"), "HC-49_U3H (low profile)");
+        assert_eq!(
+            storage_name("HC-49/U3H (low profile)"),
+            "HC-49_U3H (low profile)"
+        );
         assert_eq!(storage_name(&"x".repeat(40)), "x".repeat(31));
         assert_eq!(storage_name("A\\B:C!D\tE"), "A_B_C_D_E");
-        assert_eq!(storage_name(&"\u{1F600}".repeat(16)), "\u{1F600}".repeat(15));
+        assert_eq!(
+            storage_name(&"\u{1F600}".repeat(16)),
+            "\u{1F600}".repeat(15)
+        );
     }
 
     #[test]
@@ -730,7 +987,10 @@ mod tests {
         assert_eq!(l.to_bytes().unwrap(), buf);
         let mut grown = l;
         grown.names.push("B".into());
-        assert_eq!(List::parse(&grown.to_bytes().unwrap()).unwrap().names, ["A", "SOIC-8", "B"]);
+        assert_eq!(
+            List::parse(&grown.to_bytes().unwrap()).unwrap().names,
+            ["A", "SOIC-8", "B"]
+        );
         assert!(List::parse(&buf[..buf.len() - 1]).is_err());
     }
 
@@ -742,13 +1002,19 @@ mod tests {
         data.extend([1, 2, 3]);
         let renamed = set_data_name(&data, "SOIC-8N").unwrap();
         assert_eq!(&renamed[..4], &8u32.to_le_bytes());
-        assert_eq!(&renamed[4..], &[7, b'S', b'O', b'I', b'C', b'-', b'8', b'N', 1, 2, 3]);
+        assert_eq!(
+            &renamed[4..],
+            &[7, b'S', b'O', b'I', b'C', b'-', b'8', b'N', 1, 2, 3]
+        );
         let body = b"|PATTERN=SOIC-8|HEIGHT=1mil\0";
         let mut params = ((body.len() as u32).to_le_bytes()).to_vec();
         params.extend(body);
         let p = set_pattern(&params, "SOIC-8", "SOIC-8N").unwrap();
         assert_eq!(&p[4..], b"|PATTERN=SOIC-8N|HEIGHT=1mil\0");
-        assert_eq!(u32::from_le_bytes(p[..4].try_into().unwrap()) as usize, p.len() - 4);
+        assert_eq!(
+            u32::from_le_bytes(p[..4].try_into().unwrap()) as usize,
+            p.len() - 4
+        );
         assert_eq!(set_pattern(&params, "OTHER", "X").unwrap(), params);
         assert!(split_record("Parameters", &params[..params.len() - 1]).is_err());
     }

@@ -130,7 +130,12 @@ impl Footprint {
     }
 
     pub fn summary(&self, models: &[Model]) -> FootprintSummary {
-        let mut nums: Vec<&str> = self.pads.iter().map(|p| p.number.as_str()).filter(|n| !n.is_empty()).collect();
+        let mut nums: Vec<&str> = self
+            .pads
+            .iter()
+            .map(|p| p.number.as_str())
+            .filter(|n| !n.is_empty())
+            .collect();
         nums.sort();
         nums.dedup();
         let th = self.pads.iter().any(|p| p.hole_size.is_some());
@@ -144,7 +149,13 @@ impl Footprint {
                     .find(|m| m.id == b.model_id)
                     .map(|m| m.name.clone())
                     .filter(|n| !n.is_empty())
-                    .unwrap_or_else(|| if b.model_name.is_empty() { b.model_id.clone() } else { b.model_name.clone() })
+                    .unwrap_or_else(|| {
+                        if b.model_name.is_empty() {
+                            b.model_id.clone()
+                        } else {
+                            b.model_name.clone()
+                        }
+                    })
             })
             .collect();
         ms.dedup();
@@ -228,17 +239,28 @@ pub fn parse_footprint_data(
             prim::rec::ARC => prim::parse_arc(&mut b, fp.arcs.len()).map(|v| fp.arcs.push(v)),
             prim::rec::PAD => prim::parse_pad(&mut b, fp.pads.len()).map(|v| fp.pads.push(v)),
             prim::rec::VIA => prim::parse_via(&mut b, fp.vias.len()).map(|v| fp.vias.push(v)),
-            prim::rec::TRACK => prim::parse_track(&mut b, fp.tracks.len()).map(|v| fp.tracks.push(v)),
-            prim::rec::TEXT => prim::parse_text(&mut b, fp.texts.len(), wide).map(|v| fp.texts.push(v)),
+            prim::rec::TRACK => {
+                prim::parse_track(&mut b, fp.tracks.len()).map(|v| fp.tracks.push(v))
+            }
+            prim::rec::TEXT => {
+                prim::parse_text(&mut b, fp.texts.len(), wide).map(|v| fp.texts.push(v))
+            }
             prim::rec::FILL => prim::parse_fill(&mut b, fp.fills.len()).map(|v| fp.fills.push(v)),
             prim::rec::REGION => {
-                prim::parse_region(&mut b, fp.regions.len(), "footprint", false, keep_raw).map(|v| fp.regions.push(v))
+                prim::parse_region(&mut b, fp.regions.len(), "footprint", false, keep_raw)
+                    .map(|v| fp.regions.push(v))
             }
-            prim::rec::BODY => prim::parse_body(&mut b, fp.bodies.len(), keep_raw).map(|v| fp.bodies.push(v)),
+            prim::rec::BODY => {
+                prim::parse_body(&mut b, fp.bodies.len(), keep_raw).map(|v| fp.bodies.push(v))
+            }
             other => Err(Error::parse(format!("unknown object type {other}"))),
         };
         if let Err(e) = r {
-            warnings.push(format!("{name}: primitive at byte {at}: {}; {} bytes not decoded", e.message, buf.len() - at));
+            warnings.push(format!(
+                "{name}: primitive at byte {at}: {}; {} bytes not decoded",
+                e.message,
+                buf.len() - at
+            ));
             break;
         }
     }
@@ -251,8 +273,11 @@ pub fn load(path: &Path) -> Result<PcbLib> {
 
 pub fn load_with(path: &Path, keep_raw: bool) -> Result<PcbLib> {
     if DocKind::of(path) != DocKind::PcbLib {
-        return Err(Error::new(ErrorCode::WrongFileType, format!("{} is not a .PcbLib", path.display()))
-            .hint("use `ace pcb ...` for .PcbDoc boards"));
+        return Err(Error::new(
+            ErrorCode::WrongFileType,
+            format!("{} is not a .PcbLib", path.display()),
+        )
+        .hint("use `ace pcb ...` for .PcbDoc boards"));
     }
     load_compound(path, Compound::open(path)?, keep_raw)
 }
@@ -275,7 +300,10 @@ fn load_compound(path: &Path, mut cf: Compound, keep_raw: bool) -> Result<PcbLib
             match b.sub().and_then(|mut s| s.pascal()) {
                 Ok(name) => names.push(name),
                 Err(_) => {
-                    warnings.push(format!("Library/Data: footprint list truncated after {} of {n} names", names.len()));
+                    warnings.push(format!(
+                        "Library/Data: footprint list truncated after {} of {n} names",
+                        names.len()
+                    ));
                     break;
                 }
             }
@@ -286,7 +314,10 @@ fn load_compound(path: &Path, mut cf: Compound, keep_raw: bool) -> Result<PcbLib
     }
     let (layers, stackup, _, w) = board::parse_layers(&props);
     warnings.extend(w);
-    let file = cf.read_opt("FileHeader").map(|h| file_header(&h)).unwrap_or_default();
+    let file = cf
+        .read_opt("FileHeader")
+        .map(|h| file_header(&h))
+        .unwrap_or_default();
 
     let storages: Vec<String> = cf.storages("");
     let mut footprints = vec![];
@@ -311,7 +342,11 @@ fn load_compound(path: &Path, mut cf: Compound, keep_raw: bool) -> Result<PcbLib
             continue;
         };
         let mut fw = vec![];
-        let wide = cf.read_opt(&format!("{storage}/WideStrings")).and_then(|w| Bin::new(&w).props().ok()).map(|p| altium_format::cfbx::encoded_text_table(&p)).unwrap_or_default();
+        let wide = cf
+            .read_opt(&format!("{storage}/WideStrings"))
+            .and_then(|w| Bin::new(&w).props().ok())
+            .map(|p| altium_format::cfbx::encoded_text_table(&p))
+            .unwrap_or_default();
         let (inner, mut fp) = parse_footprint_data(&data, &wide, keep_raw, &mut fw);
         fp.index = i;
         fp.name = name.clone();
@@ -320,15 +355,20 @@ fn load_compound(path: &Path, mut cf: Compound, keep_raw: bool) -> Result<PcbLib
             fw.push(format!("Data names the footprint {inner:?}"));
         }
         if let Some(pb) = cf.read_opt(&format!("{storage}/Parameters"))
-            && let Ok(p) = Bin::new(&pb).props() {
-                fp.description = p.str("DESCRIPTION");
-                fp.height = p.len("HEIGHT");
-                for (k, v) in p.entries() {
-                    if !["PATTERN", "DESCRIPTION", "HEIGHT"].iter().any(|x| x.eq_ignore_ascii_case(k)) && !v.is_empty() {
-                        fp.parameters.insert(k.to_owned(), v.to_owned());
-                    }
+            && let Ok(p) = Bin::new(&pb).props()
+        {
+            fp.description = p.str("DESCRIPTION");
+            fp.height = p.len("HEIGHT");
+            for (k, v) in p.entries() {
+                if !["PATTERN", "DESCRIPTION", "HEIGHT"]
+                    .iter()
+                    .any(|x| x.eq_ignore_ascii_case(k))
+                    && !v.is_empty()
+                {
+                    fp.parameters.insert(k.to_owned(), v.to_owned());
                 }
             }
+        }
         if let Some(u) = cf.read_opt(&format!("{storage}/UniqueIDPrimitiveInformation/Data")) {
             let ids = records::unique_ids(&records::prop_records(&u, 0).0);
             for p in &mut fp.pads {
@@ -340,8 +380,14 @@ fn load_compound(path: &Path, mut cf: Compound, keep_raw: bool) -> Result<PcbLib
         footprints.push(fp);
     }
     for s in &storages {
-        if s != "Library" && s != "FileVersionInfo" && !seen.contains(s) && cf.exists(&format!("{s}/Data")) {
-            warnings.push(format!("storage {s:?} looks like a footprint but is not in the Library/Data list"));
+        if s != "Library"
+            && s != "FileVersionInfo"
+            && !seen.contains(s)
+            && cf.exists(&format!("{s}/Data"))
+        {
+            warnings.push(format!(
+                "storage {s:?} looks like a footprint but is not in the Library/Data list"
+            ));
         }
     }
 
@@ -360,9 +406,23 @@ fn load_compound(path: &Path, mut cf: Compound, keep_raw: bool) -> Result<PcbLib
             m.stream = Some(s);
             m.compressed_size = Some(*sz);
         }
-        m.used_by = footprints.iter().flat_map(|f| &f.bodies).filter(|b| b.model_id == m.id).count();
+        m.used_by = footprints
+            .iter()
+            .flat_map(|f| &f.bodies)
+            .filter(|b| b.model_id == m.id)
+            .count();
     }
-    Ok(PcbLib { path: path.to_path_buf(), file, layers, stackup, footprints, models, warnings, props, cf })
+    Ok(PcbLib {
+        path: path.to_path_buf(),
+        file,
+        layers,
+        stackup,
+        footprints,
+        models,
+        warnings,
+        props,
+        cf,
+    })
 }
 
 impl PcbLib {
@@ -371,24 +431,37 @@ impl PcbLib {
         if let Some(f) = self.footprints.iter().find(|f| f.name == name) {
             return Ok(f);
         }
-        if let Some(f) = self.footprints.iter().find(|f| f.name.eq_ignore_ascii_case(name)) {
+        if let Some(f) = self
+            .footprints
+            .iter()
+            .find(|f| f.name.eq_ignore_ascii_case(name))
+        {
             return Ok(f);
         }
         if let Some(i) = name.strip_prefix('#').and_then(|s| s.parse::<usize>().ok())
-            && let Some(f) = self.footprints.get(i) {
-                return Ok(f);
-            }
-        let names: Vec<&str> = self.footprints.iter().map(|f| f.name.as_str()).take(40).collect();
-        Err(Error::not_found(format!("no footprint {name:?}")).hint(format!("footprints: {names:?}")))
+            && let Some(f) = self.footprints.get(i)
+        {
+            return Ok(f);
+        }
+        let names: Vec<&str> = self
+            .footprints
+            .iter()
+            .map(|f| f.name.as_str())
+            .take(40)
+            .collect();
+        Err(Error::not_found(format!("no footprint {name:?}"))
+            .hint(format!("footprints: {names:?}")))
     }
 
     /// Decompressed STEP data of model `index`.
     pub fn model_data(&mut self, index: usize) -> Result<Vec<u8>> {
-        let m = self.models.get(index).ok_or_else(|| Error::not_found(format!("no model {index}")))?;
-        let s = m
-            .stream
-            .clone()
-            .ok_or_else(|| Error::not_found(format!("model {index} ({}) has no embedded data", m.name)))?;
+        let m = self
+            .models
+            .get(index)
+            .ok_or_else(|| Error::not_found(format!("no model {index}")))?;
+        let s = m.stream.clone().ok_or_else(|| {
+            Error::not_found(format!("model {index} ({}) has no embedded data", m.name))
+        })?;
         inflate(&self.cf.read(&s)?)
     }
 }

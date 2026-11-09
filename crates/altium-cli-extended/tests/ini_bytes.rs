@@ -17,11 +17,25 @@ fn project_lines(rev: &[u8], variant: &[&[u8]]) -> Vec<u8> {
     let printer = [&b"TargetPrinter=FX DocuPrint M268 dw ("[..], GBK, b" 1)"].concat();
     let description = [&b"Description="[..], CP1251].concat();
     let mut lines: Vec<&[u8]> = vec![
-        b"[Design]", b"Version=1.0", b"",
-        b"[Document1]", b"DocumentPath=Power.SchDoc", b"",
-        b"[Parameter1]", b"Name=Rev", rev, b"",
-        b"[OutputGroup1]", b"Name=Netlist Outputs", &printer, b"",
-        b"[ProjectVariant1]", b"UniqueID=6DFAB600", &description, b"AllowFabrication=0", b"ParameterCount=0",
+        b"[Design]",
+        b"Version=1.0",
+        b"",
+        b"[Document1]",
+        b"DocumentPath=Power.SchDoc",
+        b"",
+        b"[Parameter1]",
+        b"Name=Rev",
+        rev,
+        b"",
+        b"[OutputGroup1]",
+        b"Name=Netlist Outputs",
+        &printer,
+        b"",
+        b"[ProjectVariant1]",
+        b"UniqueID=6DFAB600",
+        &description,
+        b"AllowFabrication=0",
+        b"ParameterCount=0",
     ];
     lines.extend(variant);
     crlf(&lines)
@@ -44,7 +58,11 @@ fn write(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
 
 #[test]
 fn project_edits_under_a_lossy_codepage_keep_untouched_bytes() {
-    let gbk_override = [&b"ParamVariation2=ParameterName=Comment|VariantValue="[..], GBK].concat();
+    let gbk_override = [
+        &b"ParamVariation2=ParameterName=Comment|VariantValue="[..],
+        GBK,
+    ]
+    .concat();
     let variant: &[&[u8]] = &[
         b"VariationCount=2",
         b"Variation1=Designator=R1|UniqueId=\\AAAAAAAA|Kind=0|AlternatePart=",
@@ -59,20 +77,43 @@ fn project_edits_under_a_lossy_codepage_keep_untouched_bytes() {
     let dir = tempdir("ini-bytes-project");
 
     let p = write(&dir, "edit.PrjPcb", &original);
-    ok(&["project", "set-parameter", &p, "Rev", "B", "--codepage", "utf-8"]);
+    ok(&[
+        "project",
+        "set-parameter",
+        &p,
+        "Rev",
+        "B",
+        "--codepage",
+        "utf-8",
+    ]);
     assert_eq!(read(&p), shown(&project_lines(b"Value=B", variant)));
 
     // Dropping R1 renumbers U9's override; its GBK value keeps its bytes.
     let p = write(&dir, "clear.PrjPcb", &original);
-    ok(&["project", "clear-variation", &p, "1", "R1", "--codepage", "utf-8"]);
-    let renumbered = [&b"ParamVariation1=ParameterName=Comment|VariantValue="[..], GBK].concat();
-    let expected = project_lines(b"Value=A", &[
-        b"VariationCount=1",
-        b"Variation1=Designator=U9|UniqueId=\\WCFWLFNF|Kind=0|AlternatePart=",
-        b"ParamDesignator1=U9",
-        &renumbered,
-        b"ParamVariationCount=1",
+    ok(&[
+        "project",
+        "clear-variation",
+        &p,
+        "1",
+        "R1",
+        "--codepage",
+        "utf-8",
     ]);
+    let renumbered = [
+        &b"ParamVariation1=ParameterName=Comment|VariantValue="[..],
+        GBK,
+    ]
+    .concat();
+    let expected = project_lines(
+        b"Value=A",
+        &[
+            b"VariationCount=1",
+            b"Variation1=Designator=U9|UniqueId=\\WCFWLFNF|Kind=0|AlternatePart=",
+            b"ParamDesignator1=U9",
+            &renumbered,
+            b"ParamVariationCount=1",
+        ],
+    );
     assert_eq!(read(&p), shown(&expected));
 }
 
@@ -83,18 +124,47 @@ fn outjob_edits_under_a_lossy_codepage_keep_untouched_bytes() {
     let medium = b"OutputMedium1=\xcf\xe5\xf7\xe0\xf2\xea\xe0 100\xf560";
     let job = |variant: &[u8], enabled: &[u8]| {
         crlf(&[
-            b"[OutputJobFile]", b"Version=1.0", b"",
-            b"[OutputGroup1]", b"Name=Job1", b"Description=", &printer, variant, medium,
-            b"OutputMedium1_Type=Printer", b"OutputType1=Gerber", b"OutputName1=Gerber Files",
-            b"OutputDocumentPath1=Board.PcbDoc", enabled,
+            b"[OutputJobFile]",
+            b"Version=1.0",
+            b"",
+            b"[OutputGroup1]",
+            b"Name=Job1",
+            b"Description=",
+            &printer,
+            variant,
+            medium,
+            b"OutputMedium1_Type=Printer",
+            b"OutputType1=Gerber",
+            b"OutputName1=Gerber Files",
+            b"OutputDocumentPath1=Board.PcbDoc",
+            enabled,
         ])
     };
     let dir = tempdir("ini-bytes-outjob");
-    let j = write(&dir, "Job1.OutJob", &job(b"VariantName=Default", b"OutputEnabled1_OutputMedium1=0"));
+    let j = write(
+        &dir,
+        "Job1.OutJob",
+        &job(b"VariantName=Default", b"OutputEnabled1_OutputMedium1=0"),
+    );
     ok(&["outjob", "set-variant", &j, "QA", "--codepage", "utf-8"]);
-    assert_eq!(read(&j), shown(&job(b"VariantName=QA", b"OutputEnabled1_OutputMedium1=0")));
-    ok(&["outjob", "enable", &j, "1", "--medium", "1", "--codepage", "utf-8"]);
-    assert_eq!(read(&j), shown(&job(b"VariantName=QA", b"OutputEnabled1_OutputMedium1=1")));
+    assert_eq!(
+        read(&j),
+        shown(&job(b"VariantName=QA", b"OutputEnabled1_OutputMedium1=0"))
+    );
+    ok(&[
+        "outjob",
+        "enable",
+        &j,
+        "1",
+        "--medium",
+        "1",
+        "--codepage",
+        "utf-8",
+    ]);
+    assert_eq!(
+        read(&j),
+        shown(&job(b"VariantName=QA", b"OutputEnabled1_OutputMedium1=1"))
+    );
 }
 
 #[test]
@@ -106,11 +176,33 @@ fn values_the_codepage_cannot_store_are_refused() {
     let printer = "FX DocuPrint M268 dw (\u{FFFD}\u{FFFD}\u{FFFD}\u{FFFD} 2)";
     for call in [
         vec!["project", "set-parameter", &p, "Rev", "한국"],
-        vec!["project", "set-parameter", &p, "Rev", "\u{FFFD}", "--codepage", "utf-8"],
-        vec!["project", "set-option", &p, "OutputGroup1", "TargetPrinter", printer, "--codepage", "utf-8"],
+        vec![
+            "project",
+            "set-parameter",
+            &p,
+            "Rev",
+            "\u{FFFD}",
+            "--codepage",
+            "utf-8",
+        ],
+        vec![
+            "project",
+            "set-option",
+            &p,
+            "OutputGroup1",
+            "TargetPrinter",
+            printer,
+            "--codepage",
+            "utf-8",
+        ],
     ] {
         let error = err(&call, "UNSAFE");
-        assert!(error["error"]["hint"].as_str().is_some_and(|h| h.contains("--codepage")), "{error}");
+        assert!(
+            error["error"]["hint"]
+                .as_str()
+                .is_some_and(|h| h.contains("--codepage")),
+            "{error}"
+        );
         assert_eq!(read(&p), shown(&original));
         assert!(!dir.join("refuse.PrjPcb.bak").exists());
     }
@@ -119,11 +211,22 @@ fn values_the_codepage_cannot_store_are_refused() {
 #[test]
 fn line_endings_bom_comments_and_spacing_survive_edits() {
     let lines: &[&[u8]] = &[
-        b"[Design]", b"Version=1.0", b"",
-        b"[Parameter1]", b"Name=Rev", b"Value=A", b"",
-        b"[Document1]", b"DocumentPath=Power.SchDoc",
+        b"[Design]",
+        b"Version=1.0",
+        b"",
+        b"[Parameter1]",
+        b"Name=Rev",
+        b"Value=A",
+        b"",
+        b"[Document1]",
+        b"DocumentPath=Power.SchDoc",
     ];
-    let join = |nl: &[u8]| lines.iter().flat_map(|l| [*l, nl].concat()).collect::<Vec<u8>>();
+    let join = |nl: &[u8]| {
+        lines
+            .iter()
+            .flat_map(|l| [*l, nl].concat())
+            .collect::<Vec<u8>>()
+    };
     let crlf_file = join(b"\r\n");
     let files: Vec<(&str, Vec<u8>)> = vec![
         ("crlf", crlf_file.clone()),
@@ -142,7 +245,11 @@ fn line_endings_bom_comments_and_spacing_survive_edits() {
         let p = write(&dir, &format!("{name}.PrjPcb"), &original);
         ok(&["project", "set-parameter", &p, "Rev", "B"]);
         let at = original.windows(7).position(|w| w == b"Value=A").unwrap();
-        assert_eq!(read(&p), shown(&[&original[..at], b"Value=B", &original[at + 7..]].concat()), "{name}");
+        assert_eq!(
+            read(&p),
+            shown(&[&original[..at], b"Value=B", &original[at + 7..]].concat()),
+            "{name}"
+        );
         ok(&["project", "set-parameter", &p, "Rev", "A"]);
         assert_eq!(read(&p), shown(&original), "{name}: set back");
         ok(&["project", "set-parameter", &p, "Stage", "Proto"]);
@@ -152,11 +259,28 @@ fn line_endings_bom_comments_and_spacing_survive_edits() {
 
     // A line added after an unterminated last line gets the line break it lacked.
     let p = write(&dir, "append.PrjPcb", &crlf_file[..crlf_file.len() - 2]);
-    ok(&["project", "set-option", &p, "Document1", "AnnotationEnabled", "1"]);
-    assert_eq!(read(&p), shown(&[&crlf_file[..], b"AnnotationEnabled=1\r\n"].concat()));
-    let p = write(&dir, "append-section.PrjPcb", &crlf_file[..crlf_file.len() - 2]);
+    ok(&[
+        "project",
+        "set-option",
+        &p,
+        "Document1",
+        "AnnotationEnabled",
+        "1",
+    ]);
+    assert_eq!(
+        read(&p),
+        shown(&[&crlf_file[..], b"AnnotationEnabled=1\r\n"].concat())
+    );
+    let p = write(
+        &dir,
+        "append-section.PrjPcb",
+        &crlf_file[..crlf_file.len() - 2],
+    );
     ok(&["project", "set-option", &p, "Extra", "Key", "1"]);
-    assert_eq!(read(&p), shown(&[&crlf_file[..], b"\r\n[Extra]\r\nKey=1\r\n"].concat()));
+    assert_eq!(
+        read(&p),
+        shown(&[&crlf_file[..], b"\r\n[Extra]\r\nKey=1\r\n"].concat())
+    );
 }
 
 /// The sample projects saved on Chinese and Russian Windows, edited with the wrong code page.
@@ -164,14 +288,29 @@ fn line_endings_bom_comments_and_spacing_survive_edits() {
 fn sample_projects_keep_every_original_line() {
     let Some(root) = samples() else { return };
     let dir = tempdir("ini-bytes-samples");
-    for sample in ["AirPi_PCB/AirPi_Power/AirPi_Power.PrjPcb", "quasar_arm_pcb/Quasar ARM.PrjPcb"] {
+    for sample in [
+        "AirPi_PCB/AirPi_Power/AirPi_Power.PrjPcb",
+        "quasar_arm_pcb/Quasar ARM.PrjPcb",
+    ] {
         let copy = copy_to(&root.join(sample), &dir);
         let original = std::fs::read(&copy).unwrap();
-        ok(&["project", "set-parameter", &s(&copy), "Rev", "B", "--codepage", "utf-8"]);
+        ok(&[
+            "project",
+            "set-parameter",
+            &s(&copy),
+            "Rev",
+            "B",
+            "--codepage",
+            "utf-8",
+        ]);
         let edited = std::fs::read(&copy).unwrap();
         let mut out = edited.split(|&b| b == b'\n');
         for line in original.split(|&b| b == b'\n') {
-            assert!(out.any(|l| l == line), "{sample}: {:?} changed or moved", String::from_utf8_lossy(line));
+            assert!(
+                out.any(|l| l == line),
+                "{sample}: {:?} changed or moved",
+                String::from_utf8_lossy(line)
+            );
         }
     }
 }

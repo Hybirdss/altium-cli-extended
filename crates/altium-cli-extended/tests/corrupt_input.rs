@@ -10,7 +10,10 @@ fn corrupt_region_coordinate_in_pcblib_returns_an_envelope() {
     let dir = tempdir("corrupt-pcblib");
     let lib = copy_to(&root.join("BeagleBoneCape/BeagleBoneCape.PcbLib"), &dir);
     let mut bytes = std::fs::read(&lib).unwrap();
-    assert_eq!(bytes[99149], 0xC1, "fixture changed; pick another region vertex byte");
+    assert_eq!(
+        bytes[99149], 0xC1,
+        "fixture changed; pick another region vertex byte"
+    );
     bytes[99149] = 0xE5;
     std::fs::write(&lib, bytes).unwrap();
     let (exit, v) = run(&["pcblib", "list", &s(&lib)]);
@@ -24,7 +27,11 @@ fn pcbdoc_renamed_to_schlib_is_the_wrong_file_type() {
     let Some(root) = samples() else { return };
     let dir = tempdir("wrong-schlib");
     let wrong = dir.join("wrong.SchLib");
-    std::fs::copy(root.join("AirPi_PCB/AirPi_Power/AirPi_Power.PcbDoc"), &wrong).unwrap();
+    std::fs::copy(
+        root.join("AirPi_PCB/AirPi_Power/AirPi_Power.PcbDoc"),
+        &wrong,
+    )
+    .unwrap();
     let e = err(&["schlib", "list", &s(&wrong)], "WRONG_FILE_TYPE");
     assert!(e["error"]["hint"].is_string(), "{e}");
     std::fs::remove_dir_all(dir).unwrap();
