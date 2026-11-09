@@ -62,9 +62,10 @@ pub struct Global {
     /// Unit for every length/coordinate in the output.
     #[arg(long, global = true, value_enum, default_value_t = UnitArg::Mm, env = "ACE_UNITS")]
     pub units: UnitArg,
-    /// ANSI code page of the design files (e.g. windows-1251, euc-kr, gbk, shift_jis).
-    #[arg(long, global = true, env = "ACE_CODEPAGE", default_value = "windows-1252")]
-    pub codepage: String,
+    /// ANSI code page of the design files (e.g. windows-1251, euc-kr, gbk, shift_jis). Default
+    /// windows-1252; naming one also turns off guessing a file's code page from its text.
+    #[arg(long, global = true, env = "ACE_CODEPAGE")]
+    pub codepage: Option<String>,
     /// Keep only these fields of each list item (comma-separated, dotted paths allowed).
     #[arg(long, global = true, value_delimiter = ',')]
     pub fields: Vec<String>,
@@ -274,15 +275,19 @@ fn run() {
 
     let unit: Unit = g.units.into();
     units::set_output_unit(unit);
-    let Some(cp) = altium_format::props::set_codepage(&g.codepage) else {
+    let label = g.codepage.as_deref().unwrap_or("windows-1252");
+    let Some(cp) = altium_format::props::set_codepage(label) else {
         fail(
             &path,
-            &Error::usage(format!("unknown code page {:?}", g.codepage))
+            &Error::usage(format!("unknown code page {label:?}"))
                 .hint("use a WHATWG label such as windows-1252, windows-1251, euc-kr, gbk, shift_jis, utf-8"),
             json_mode,
             pretty,
         );
     };
+    if g.codepage.is_some() {
+        altium_format::props::trust_codepage();
+    }
 
     let mut shape = Shape { fields: g.fields.clone(), filters: vec![], limit: g.limit };
     for f in &g.filters {
@@ -321,10 +326,15 @@ fn run() {
             let (shape_warnings, similar) = shape.diagnostics(&out.data);
             out.warnings.extend(shape_warnings);
             shape.apply(&mut out.data);
+            let current = altium_format::props::codepage().name();
             if let Some(cp) = altium_format::props::codepage_mismatch() {
                 out.warnings.push(format!(
-                    "non-ASCII text in this file is stored in {cp}, not {}: rerun with --codepage {} (or set ACE_CODEPAGE) to decode names and parameters correctly",
-                    altium_format::props::codepage().name(),
+                    "non-ASCII text in this file is stored in {cp}, not {current}: rerun with --codepage {} (or set ACE_CODEPAGE) to decode names and parameters correctly",
+                    cp.to_ascii_lowercase()
+                ));
+            } else if let Some(cp) = altium_format::props::codepage_guess() {
+                out.warnings.push(format!(
+                    "non-ASCII text without a UTF-8 copy was decoded as {current} but reads like {cp}: if names or parameters look garbled, rerun with --codepage {} (or set ACE_CODEPAGE)",
                     cp.to_ascii_lowercase()
                 ));
             }
@@ -351,7 +361,7 @@ fn run() {
                             "elapsed_ms": started.elapsed().as_millis() as u64,
                             "version": env!("CARGO_PKG_VERSION"),
                             "similar": similar,
-                            "suggest": altium_format::props::codepage_mismatch().map(|cp| json!({"codepage":cp.to_ascii_lowercase()})),
+                            "suggest": altium_format::props::codepage_mismatch().or(altium_format::props::codepage_guess()).map(|cp| json!({"codepage":cp.to_ascii_lowercase()})),
                         }
                     }),
                     pretty,

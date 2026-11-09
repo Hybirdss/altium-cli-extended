@@ -58,7 +58,8 @@ fn pcb_rule_class_param_component_edits() {
     let a = ok(&["pcb", "stats", &s(&root.join("AirPi_PCB/AirPi_Power/AirPi_Power.PcbDoc"))]);
     let b = ok(&["pcb", "stats", &f]);
     assert_eq!(a["totals"], b["totals"]);
-    let (_, v) = run(&["pcb", "info", &f]);
+    // The board's parameter text is GBK.
+    let (_, v) = run(&["pcb", "info", &f, "--codepage", "gbk"]);
     assert_eq!(v["warnings"], serde_json::json!([]));
 }
 

@@ -6,10 +6,11 @@
 
 use std::cell::Cell;
 
-use encoding_rs::{Encoding, WINDOWS_1252};
+use encoding_rs::{EUC_KR, Encoding, GBK, SHIFT_JIS, WINDOWS_1251, WINDOWS_1252};
 use indexmap::IndexMap;
 use serde::Serialize;
 
+use altium_core::error::{Error, ErrorCode, Result};
 use altium_core::units::Coord;
 
 /// A parsed property record. Duplicate keys keep only the last value, so serialising a parsed
@@ -26,6 +27,10 @@ thread_local! {
     /// Code page that reproduces the ANSI bytes of a `%UTF8%` copy when the current one
     /// does not (see [`codepage_mismatch`]).
     static MISMATCH: Cell<Option<&'static Encoding>> = const { Cell::new(None) };
+    /// Code page that windows-1252 text with no `%UTF8%` copy reads like (see [`codepage_guess`]).
+    static GUESS: Cell<Option<&'static Encoding>> = const { Cell::new(None) };
+    /// Off once the user names the code page, so a guess never overrides their choice.
+    static GUESSING: Cell<bool> = const { Cell::new(true) };
 }
 
 /// ANSI code pages Altium files are commonly saved in, tried when the text does not match.
@@ -58,12 +63,90 @@ fn note_pair(ansi: &[u8], utf8: &str) {
     }
 }
 
+/// Non-ASCII text without a `%UTF8%` copy reads like another code page than windows-1252:
+/// returns it (e.g. `GBK`). A guess, so it only produces a warning; decoding is unchanged.
+pub fn codepage_guess() -> Option<&'static str> {
+    GUESS.with(|g| g.get()).map(|e| e.name())
+}
+
+/// Whether a character is a letter of one script.
+type Letter = fn(char) -> bool;
+
+/// Code pages a windows-1252 misreading is checked against, each with the characters its text
+/// is made of.
+fn guesses() -> [(&'static Encoding, Letter); 4] {
+    [
+        (GBK, |c| matches!(c, '\u{4e00}'..='\u{9fff}')),
+        (SHIFT_JIS, |c| matches!(c, '\u{3041}'..='\u{30ff}' | '\u{4e00}'..='\u{9fff}')),
+        (EUC_KR, |c| matches!(c, '\u{ac00}'..='\u{d7a3}')),
+        (WINDOWS_1251, |c| matches!(c, '\u{410}'..='\u{44f}' | '\u{401}' | '\u{451}')),
+    ]
+}
+
+/// Remember the code page `b` reads like when windows-1252 shows it as a run of four or more
+/// non-ASCII characters, which accented Latin text does not produce, and exactly one candidate
+/// decodes it into nothing but letters of its script. Two fits mean no guess.
+fn note_ansi(b: &[u8]) {
+    if codepage() != WINDOWS_1252 || !GUESSING.with(|g| g.get()) || GUESS.with(|g| g.get()).is_some() {
+        return;
+    }
+    if !b.split(u8::is_ascii).any(|run| run.len() >= 4) {
+        return;
+    }
+    // GBK and EUC-KR letters count only in their GB2312 and KS X 1001 cores (byte pairs of
+    // 0xA1 or above): their extensions also decode Shift_JIS kana and kanji, as rare hanzi or
+    // Hangul.
+    let core = b.split(u8::is_ascii).all(|run| run.len() % 2 == 0 && run.iter().all(|&x| x >= 0xa1));
+    let fits: Vec<_> = guesses()
+        .into_iter()
+        .filter(|&(enc, letter)| {
+            let (text, bad) = enc.decode_without_bom_handling(b);
+            !bad && (core || (enc != GBK && enc != EUC_KR)) && text.chars().all(|c| c.is_ascii() || letter(c))
+        })
+        .collect();
+    if let [(enc, _)] = fits[..] {
+        GUESS.with(|g| g.set(Some(enc)));
+    }
+}
+
+/// Refuse to encode non-ASCII `text` in the current code page once the file is known (or
+/// guessed) to store its text in another one: the record would mix two encodings.
+pub fn check_mixing(text: &str) -> Result<()> {
+    if text.is_ascii() {
+        return Ok(());
+    }
+    let confirmed = MISMATCH.with(|m| m.get());
+    match confirmed.or(GUESS.with(|g| g.get())) {
+        Some(file) => {
+            let mut hint = format!("rerun with --codepage {} (or set ACE_CODEPAGE)", file.name().to_ascii_lowercase());
+            if confirmed.is_none() {
+                hint.push_str(&format!("; if the file really is {}, pass --codepage {} to stop guessing", codepage().name(), codepage().name().to_ascii_lowercase()));
+            }
+            Err(Error::new(
+                ErrorCode::Unsafe,
+                format!("this file stores non-ASCII text in {}, not {}; writing {text:?} would mix the two in one file; nothing written", file.name(), codepage().name()),
+            )
+            .hint(hint))
+        }
+        None => Ok(()),
+    }
+}
+
 /// Set the ANSI code page used for non-UTF-8 text (`--codepage`, e.g. `windows-1251`,
-/// `euc-kr`, `gbk`, `shift_jis`). Altium writes whatever the author's Windows used.
+/// `euc-kr`, `gbk`, `shift_jis`). Altium writes whatever the author's Windows used. Forgets
+/// what was detected against the previous code page.
 pub fn set_codepage(label: &str) -> Option<&'static str> {
     let enc = Encoding::for_label(label.as_bytes())?;
     CODEPAGE.with(|c| c.set(enc));
+    MISMATCH.with(|m| m.set(None));
+    GUESS.with(|g| g.set(None));
     Some(enc.name())
+}
+
+/// The user named the code page (`--codepage` or `ACE_CODEPAGE`): stop guessing another one.
+pub fn trust_codepage() {
+    GUESSING.with(|g| g.set(false));
+    GUESS.with(|g| g.set(None));
 }
 
 pub fn codepage() -> &'static Encoding {
@@ -76,6 +159,7 @@ pub fn decode_ansi(b: &[u8]) -> String {
     if b.is_ascii() {
         return String::from_utf8_lossy(b).into_owned();
     }
+    note_ansi(b);
     codepage().decode_without_bom_handling(b).0.into_owned()
 }
 
@@ -270,6 +354,23 @@ mod tests {
         assert_eq!(p.int("record"), Some(1));
         assert_eq!(p.get("TEXT").as_deref(), Some("é"));
         assert_eq!(p.to_bytes(), raw[..raw.len() - 1].to_vec());
+    }
+
+    fn guess(text: &[u8]) -> Option<&'static str> {
+        set_codepage("windows-1252");
+        decode_ansi(text);
+        codepage_guess()
+    }
+
+    #[test]
+    fn guesses_the_code_page_of_text_without_utf8_copies() {
+        assert_eq!(guess(b"ComponentLink1Description=\xb9\xa9\xd3\xa6\xc9\xcc\xc1\xb4\xbd\xd3"), Some("GBK"));
+        assert_eq!(guess(b"OutputMedium4=\xcf\xe5\xf7\xe0\xf2\xea\xe0 100\xf560"), Some("windows-1251"));
+        assert_eq!(guess(b"\x93d\x8c\xb9\x89\xf1\x98H"), Some("Shift_JIS"));
+        // Hangul reads as GB2312 hanzi too: two fits, no guess.
+        assert_eq!(guess(b"\xc7\xd1\xb1\xb9\xbe\xee"), None);
+        assert_eq!(guess(b"R\xe9sistance \xfcber K\xfchlk\xf6rper, Gr\xf6\xdfe \xb15% 25\xb0C"), None);
+        assert_eq!(guess(b"\xc4\xd6\xdc\xdf"), None);
     }
 
     #[test]

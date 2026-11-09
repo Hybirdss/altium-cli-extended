@@ -177,7 +177,8 @@ fn pcblib_copy_footprint_with_models() {
     ok(&["pcblib", "models", &o, "--extract", &s(&step_src)]);
     assert_eq!(copied, std::fs::read(step_src.join(name)).unwrap());
     assert_eq!(m["items"][0]["embedded"], true);
-    let (_, env) = run(&["pcblib", "info", &l]);
+    // The library's descriptions are Russian.
+    let (_, env) = run(&["pcblib", "info", &l, "--codepage", "windows-1251"]);
     assert_eq!(env["warnings"], json!([]));
 }
 
@@ -197,7 +198,7 @@ fn pcblib_rename_moves_the_storage() {
     );
     assert_prefix_unchanged(&before, &after, "A/");
     assert_prefix_unchanged(&before, &after, "0805 Resistor/");
-    let (_, env) = run(&["pcblib", "info", &l]);
+    let (_, env) = run(&["pcblib", "info", &l, "--codepage", "windows-1251"]);
     assert_eq!(env["warnings"], json!([]));
     assert_eq!(ok(&["pcblib", "info", &l])["footprints"], 44);
 }

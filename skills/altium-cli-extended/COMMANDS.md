@@ -8,7 +8,7 @@ Generated from the command table of `ace 0.1.1` (`ace skill --file commands`). `
 - `--text` — Force human-readable output (tables)
 - `--pretty` — Pretty-print JSON
 - `--units` — Unit for every length/coordinate in the output (default `mm`)
-- `--codepage` — ANSI code page of the design files (e.g. windows-1251, euc-kr, gbk, shift_jis) (default `windows-1252`)
+- `--codepage` — ANSI code page of the design files (e.g. windows-1251, euc-kr, gbk, shift_jis). Default windows-1252; naming one also turns off guessing a file's code page from its text
 - `--fields` — Keep only these fields of each list item (comma-separated, dotted paths allowed)
 - `--where` — Filter list items: key=value, key!=value, key~regex, key^=substring. Repeatable (AND)
 - `--limit` — Keep at most N list items

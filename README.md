@@ -42,7 +42,7 @@ Every command outputs a single JSON envelope, every failure returns a stable err
 * **Wine on Linux (optional):** Drives Altium Designer under Wine.
 
 > **Byte-safe native writes & Designer note:**
-> * Native writes (`effect: write`) support `--dry-run`, preserve the first `<file>.bak` (unless `--no-backup` is passed), and re-parse the modified bytes before replacing the file. Binary `.SchDoc`/`.PcbDoc`/`.PcbLib` edits keep untouched records and streams intact. Project and OutJob INI writes rewrite only the entries they edit: every other line, comments and blank lines included, keeps its exact bytes, line ending, and BOM, and a value the code page cannot store is refused with `UNSAFE`.
+> * Native writes (`effect: write`) support `--dry-run`, preserve the first `<file>.bak` (unless `--no-backup` is passed), and re-parse the modified bytes before replacing the file. Binary `.SchDoc`/`.PcbDoc`/`.PcbLib` edits keep untouched records and streams intact. Project and OutJob INI writes rewrite only the entries they edit: every other line, comments and blank lines included, keeps its exact bytes, line ending, and BOM, and a value the code page cannot store is refused with `UNSAFE`. Writing non-ASCII text into a file whose text is in another code page than `--codepage` is also refused with `UNSAFE`, and the hint names the code page to pass.
 > * Known Designer limitation: Designer jobs leave `.PrjPcb` and bridge script projects (`AltiumCliBridge.PrjScr`, `Job.PrjScr`) open in the Projects panel, and a board after DRC appears modified. Close them manually from the Projects panel when needed and select **"Don't Save"** for files you did not edit.
 
 ---
@@ -106,7 +106,7 @@ ace pcblib rename Footprints.PcbLib SOIC-8 SOIC-8N --dry-run
 ```
 
 * **Filtering & projection:** Shape any list output with `--fields`, `--where` (`key=value`, `key!=value`, `key~regex`, `key^=substring`), and `--limit`.
-* **Units & encoding:** Lengths default to `mm` unless `--units mil|raw` or `ACE_UNITS` is set. Legacy string encoding defaults can be set with `--codepage` or `ACE_CODEPAGE`.
+* **Units & encoding:** Lengths default to `mm` unless `--units mil|raw` or `ACE_UNITS` is set. Legacy string encoding defaults can be set with `--codepage` or `ACE_CODEPAGE`. When non-ASCII text reads like another code page (GBK, Shift_JIS, EUC-KR, windows-1251), a warning and `meta.suggest.codepage` name it; the decoding changes only with `--codepage`.
 
 ---
 

@@ -42,7 +42,7 @@ Altium Designer 官方没有提供命令行工具——它是一个运行于 Win
 * **Linux Wine（可选）：** 在 Linux 下通过 Wine 驱动 Altium Designer。
 
 > **字节级安全写入与 Designer 说明：**
-> * 原生写入命令（`effect: write`）支持 `--dry-run`，默认保留首个备份文件 `<file>.bak`（除非传入 `--no-backup`），并在替换原文件前重新解析校验。二进制文档修改不会触碰无关记录和流；工程与 OutJob INI 文件写入只改写被编辑的条目，其余每一行（包括注释和空行）的字节、换行符和 BOM 均保持不变；代码页无法存储的值会以 `UNSAFE` 拒绝写入。
+> * 原生写入命令（`effect: write`）支持 `--dry-run`，默认保留首个备份文件 `<file>.bak`（除非传入 `--no-backup`），并在替换原文件前重新解析校验。二进制文档修改不会触碰无关记录和流；工程与 OutJob INI 文件写入只改写被编辑的条目，其余每一行（包括注释和空行）的字节、换行符和 BOM 均保持不变；代码页无法存储的值会以 `UNSAFE` 拒绝写入。文件文本使用的代码页与 `--codepage` 不同时，写入非 ASCII 文本同样以 `UNSAFE` 拒绝，hint 会给出应传入的代码页。
 > * Designer 已知限制：Designer 任务执行后，工程 `.PrjPcb` 及桥接脚本工程（`AltiumCliBridge.PrjScr`、`Job.PrjScr`）会保留在 Altium 的 Projects 面板中，且运行过 DRC 的 PCB 会显示为已修改。列表变长时可在 Projects 面板中手动关闭，并对未编辑的文件选择 **“Don't Save”**。
 
 ---
@@ -106,7 +106,7 @@ ace pcblib rename Footprints.PcbLib SOIC-8 SOIC-8N --dry-run
 ```
 
 * **筛选与投影：** 所有列表命令均支持 `--fields`、`--where`（`key=value`、`key!=value`、`key~regex`、`key^=substring`）与 `--limit`。
-* **单位与编码：** 长度默认使用 `mm`（可通过 `--units mil|raw` 或 `ACE_UNITS` 修改）；旧版字符编码可通过 `--codepage` 或 `ACE_CODEPAGE` 指定。
+* **单位与编码：** 长度默认使用 `mm`（可通过 `--units mil|raw` 或 `ACE_UNITS` 修改）；旧版字符编码可通过 `--codepage` 或 `ACE_CODEPAGE` 指定。非 ASCII 文本看起来属于其他代码页（GBK、Shift_JIS、EUC-KR、windows-1251）时，会通过警告和 `meta.suggest.codepage` 提示；只有传入 `--codepage` 才会改变解码。
 
 ---
 

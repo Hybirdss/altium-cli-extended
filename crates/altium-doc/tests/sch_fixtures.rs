@@ -284,7 +284,14 @@ fn edits_roundtrip() {
     assert_eq!(u2.param("Supplier").unwrap().value, "Digi-Key");
     assert_eq!(u2.param("ComponentLink1Description").unwrap().value, "供应商链接");
 
-    // New parameter, non-ASCII value: appended, WEIGHT updated, %UTF8% copy written.
+    // A non-ASCII value would put windows-1252 next to GBK in one sheet.
+    let e = edit::set_param(&d, "U2", "Note", "é ok").unwrap_err();
+    assert_eq!(e.code, altium_core::ErrorCode::Unsafe, "{e:?}");
+
+    // New parameter, non-ASCII value in the sheet's code page: appended, WEIGHT updated,
+    // %UTF8% copy written.
+    altium_format::props::set_codepage("gbk");
+    let d = sch::load(&f).unwrap();
     let (b, ch) = edit::set_param(&d, "U2", "Note", "é ok").unwrap();
     assert_eq!(ch[0].action, "create");
     let n = edit::verify(&d, &b, &ch).unwrap();
