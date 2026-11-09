@@ -4,7 +4,7 @@ members = ["crates/*"]
 default-members = ["crates/altium-cli-extended"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.89"
 license = "GPL-3.0-or-later"
