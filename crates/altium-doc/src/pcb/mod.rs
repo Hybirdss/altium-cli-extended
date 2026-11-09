@@ -586,6 +586,13 @@ pub fn design(doc: &PcbDoc) -> model::Design {
             // Same kinds as the schematic side: Graphical, Net Tie (no BOM), Standard (No BOM), Jumper.
             exclude_from_bom: matches!(c.kind_code, Some(2) | Some(4) | Some(5) | Some(6)),
             kind: c.kind.unwrap_or_default().to_owned(),
+            pcb_fields: IndexMap::from([
+                ("locked", c.locked.to_string()),
+                ("designator_visible", c.designator_visible.to_string()),
+                ("comment_visible", c.comment_visible.to_string()),
+                ("height", c.height.map(|h| h.out().to_string()).unwrap_or_default()),
+                ("footprint_description", c.footprint_description.clone()),
+            ]),
         })
         .collect();
     let mut by_net: IndexMap<u16, BTreeSet<model::Node>> = IndexMap::new();

@@ -68,7 +68,9 @@ fn within(root: &Path, base: &Path, parts: &[String]) -> Result<PathBuf> {
     Ok(path)
 }
 
-pub fn checkout_rev(file: &Path, rev: &str) -> Result<(CheckoutDir, PathBuf)> {
+/// Checks out `file` at `rev`, with every non-generated document when it is a project.
+/// Also returns the project documents `git show` could not produce at `rev`.
+pub fn checkout_rev(file: &Path, rev: &str) -> Result<(CheckoutDir, PathBuf, Vec<String>)> {
     if rev.starts_with('-') || rev.is_empty() {
         return Err(Error::usage("revision must be nonempty and cannot start with '-'").hint("use a commit hash, HEAD, or a branch or tag name"));
     }
@@ -90,9 +92,9 @@ pub fn checkout_rev(file: &Path, rev: &str) -> Result<(CheckoutDir, PathBuf)> {
     let main = show(name)?;
     let probe = tmp.0.join(name);
     std::fs::write(&probe, &main)?;
-    if DocKind::of(&file) != DocKind::Project { return Ok((tmp, probe)); }
+    if DocKind::of(&file) != DocKind::Project { return Ok((tmp, probe, vec![])); }
     let docs = Project::load(&probe)?.documents.iter()
-        .filter(|d| !d.generated && matches!(d.kind, DocKind::Schematic | DocKind::Pcb))
+        .filter(|d| !d.generated)
         .map(|d| relative(&d.rel)).collect::<Result<Vec<_>>>()?;
     std::fs::remove_file(&probe)?;
     let depth = docs.iter().map(|p| p.iter().take_while(|s| *s == "..").count()).max().unwrap_or(0);
@@ -101,14 +103,19 @@ pub fn checkout_rev(file: &Path, rev: &str) -> Result<(CheckoutDir, PathBuf)> {
     std::fs::create_dir_all(&project_dir)?;
     let copy = project_dir.join(name);
     std::fs::write(&copy, main)?;
+    let mut skipped = vec![];
     for parts in docs {
         let target = within(&tmp.0, &project_dir, &parts)?;
-        if let Ok(bytes) = show(&parts.join("/")) {
-            if let Some(parent) = target.parent() { std::fs::create_dir_all(parent)?; }
-            std::fs::write(target, bytes)?;
+        let rel = parts.join("/");
+        match show(&rel) {
+            Ok(bytes) => {
+                if let Some(parent) = target.parent() { std::fs::create_dir_all(parent)?; }
+                std::fs::write(target, bytes)?;
+            }
+            Err(_) => skipped.push(rel),
         }
     }
-    Ok((tmp, copy))
+    Ok((tmp, copy, skipped))
 }
 
 #[cfg(test)]

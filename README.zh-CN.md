@@ -182,6 +182,7 @@ ace check "$P" --pcb "$B" --require MPN,Manufacturer --baseline "$R/check.json" 
 ```
 
 * `check --fail-on error` 与 `diff --exit-code` 在触发门禁时仍会在 `stdout` 输出完整 JSON 并以退出码 `9` 退出。
+* `coverage.compared` 列出 diff 比较的内容：元件及其各字段、网络、PCB 规则与类、图纸参数、项目变体与设置。不在列表中的变更不影响 `identical`。只在一侧存在的字段或参数带有 `side: only_in_a` 或 `only_in_b`，因此清空的值与删除的值可以区分。
 * 使用 `--baseline` 可仅拦截相对于基线**新增**的问题。退出码 `10`、`11`、`12` 代表 Designer 主机不可用、失败或繁忙，不代表设计本身不合格。
 
 ### 免打开 Altium 应用 ECO 变更

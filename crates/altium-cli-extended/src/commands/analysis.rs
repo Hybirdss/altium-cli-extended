@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use altium_analysis::{bom, check, diff, netlist};
 use altium_core::error::{Error, ErrorCode, Result};
 use altium_doc::model::Design;
-use altium_doc::pcb::{self, LoadOptions, Rule, part};
+use altium_doc::pcb::{self, Class, LoadOptions, Rule, part};
 use altium_doc::project::{Project, Variant};
 use altium_doc::sch;
 use altium_format::DocKind;
@@ -202,9 +202,9 @@ pub const META: &[CmdMeta] = &[
       "ace check Board.PrjPcb --severity warning --require MPN",
       "Fast native pre-flight, not ERC/DRC (use `ace designer erc|drc`). passed=false when any error-severity finding remains after --only/--skip/--severity. --fail-on error|warning preserves the report and exits 9; by_code/by_scope are tallies before --limit. --baseline compares complete check envelopes by code/scope/severity/refs and reports new/resolved/unchanged; gates then count only new findings. refs are designators, nets or designator.pin nodes."),
     m("diff", Native, Read,
-      "{a, b, identical, incomplete?, coverage, gate?, comparison_fields?, summary:{parts_added, parts_removed, parts_changed, parts_renamed, by_field, nets_added, nets_removed, nets_renamed, nets_changed, rules_*?}, count, items:[{change, ref, field?, before?, after?, before_ref?, unique_id?, unit?, side?, fields?, added_nodes?, removed_nodes?}]}",
+      "{a, b, identical, incomplete?, coverage:{a, b, compared}, gate?, comparison_fields?, summary:{parts_added, parts_removed, parts_changed, parts_renamed, by_field, nets_added, nets_removed, nets_renamed, nets_changed, rules_*?, class_*?, sheet_param_changed?}, count, items:[{change, ref, field?, kind?, before?, after?, before_ref?, unique_id?, unit?, side?, fields?, added_nodes?, removed_nodes?, members?, added_members?, removed_members?}]}",
       "ace diff Board.PrjPcb --rev HEAD~1",
-      "change: part_added|part_removed|part_renamed|part_changed|net_added|net_removed|net_renamed|net_changed|rule_added|rule_removed|rule_changed. A schematic/project vs a PCB compares parts and connectivity (not geometry). Project variants/settings are always compared. PcbLib/SchLib compare decoded fields by name (unknown binary streams excluded). Project inputs expose incomplete and per-side coverage; restore missing_documents before trusting a diff. --rev needs git on PATH and the files committed. --exit-code preserves the report and exits 9 on differences. --match auto uses unambiguous unique IDs before designators; --match designator reproduces add/remove behavior. --summary omits items; --by part groups fields; --ignore-field REGEX/--only FIELDS scope the comparison before --exit-code. Rule values keep JSON types and units."),
+      "change: part_added|part_removed|part_renamed|part_changed|net_added|net_removed|net_renamed|net_changed|rule_added|rule_removed|rule_changed|class_added|class_removed|class_changed|sheet_param_changed. coverage.compared names what was compared (parts, part.<field>, nets, rules, classes, sheet_parameters, project_variants, project_settings). A field present on one side only has side only_in_a|only_in_b, so an empty value differs from a missing one. Part kind, exclude_from_bom and PCB component settings compare only between two designs of one source. A schematic/project vs a PCB compares parts and connectivity (not geometry). Project variants/settings are always compared. PcbLib/SchLib compare decoded fields by name (unknown binary streams excluded). Project inputs expose incomplete and per-side coverage; restore missing_documents before trusting a diff. --rev needs git on PATH and the files committed; it checks out every non-generated project document and lists any it could not in coverage.a.skipped_documents. --exit-code preserves the report and exits 9 on differences. --match auto uses unambiguous unique IDs before designators; --match designator reproduces add/remove behavior. --summary omits items; --by part groups fields; --ignore-field REGEX/--only FIELDS scope the comparison before --exit-code. Rule values keep JSON types and units."),
 ];
 
 // ------------------------------------------------------------------------------- inputs
@@ -215,14 +215,15 @@ struct Loaded {
     source: &'static str,
     /// Documents read (paths).
     documents: Vec<PathBuf>,
-    /// PCB rules, when the design is a PCB (for `diff`).
+    /// PCB rules and classes, when the design is a PCB (for `diff`).
     rules: Option<Vec<Rule>>,
+    classes: Option<Vec<Class>>,
     warnings: Vec<String>,
     coverage: Value,
 }
 
-fn load_pcb(path: &Path, with_rules: bool) -> Result<Loaded> {
-    let parts = if with_rules { part::PADS | part::RULES } else { part::PADS };
+fn load_pcb(path: &Path, for_diff: bool) -> Result<Loaded> {
+    let parts = if for_diff { part::PADS | part::RULES | part::CLASSES } else { part::PADS };
     let doc = pcb::load_with(path, &LoadOptions::parts(parts))?;
     let design = pcb::design(&doc);
     Ok(Loaded {
@@ -231,13 +232,14 @@ fn load_pcb(path: &Path, with_rules: bool) -> Result<Loaded> {
         design,
         source: "pcb",
         documents: vec![path.to_path_buf()],
-        rules: with_rules.then(|| doc.rules.clone()),
+        rules: for_diff.then(|| doc.rules.clone()),
+        classes: for_diff.then(|| doc.classes.clone()),
     })
 }
 
 fn load_sheet(path: &Path) -> Result<Loaded> {
     let design = sch::sheet_design(path)?;
-    Ok(Loaded { warnings: design.warnings.clone(), design, source: "schematic", documents: vec![path.to_path_buf()], rules: None, coverage: json!({"incomplete": false}) })
+    Ok(Loaded { warnings: design.warnings.clone(), design, source: "schematic", documents: vec![path.to_path_buf()], rules: None, classes: None, coverage: json!({"incomplete": false}) })
 }
 
 fn project_coverage(p: &Project) -> Value {
@@ -264,7 +266,7 @@ fn load_project_sch(p: &Project) -> Result<Loaded> {
             warnings.push("incomplete project: missing non-schematic dependencies listed in missing_documents; schematic counts cover all sheets".into());
         }
     }
-    Ok(Loaded { warnings, design, source: "schematic", documents: p.schematics(), rules: None, coverage })
+    Ok(Loaded { warnings, design, source: "schematic", documents: p.schematics(), rules: None, classes: None, coverage })
 }
 
 fn add_coverage(mut data: Value, coverage: &Value) -> Value {
@@ -276,18 +278,18 @@ fn add_coverage(mut data: Value, coverage: &Value) -> Value {
 
 /// The project's PCB: `explicit`, else the only one, else (given the schematic design) the
 /// one sharing the most designators with it.
-fn project_pcb(p: &Project, explicit: Option<&Path>, sch: Option<&Design>, with_rules: bool) -> Result<Loaded> {
+fn project_pcb(p: &Project, explicit: Option<&Path>, sch: Option<&Design>, for_diff: bool) -> Result<Loaded> {
     if let Some(e) = explicit {
         if !e.exists() {
             return Err(Error::new(ErrorCode::FileNotFound, format!("{} does not exist", e.display())));
         }
-        return load_pcb(e, with_rules);
+        return load_pcb(e, for_diff);
     }
     let pcbs = p.pcbs();
     match pcbs.as_slice() {
         [] => Err(Error::not_found(format!("{} has no PCB document on disk", p.path.display()))
             .hint("use --source sch, or pass --pcb <file>")),
-        [one] => load_pcb(one, with_rules),
+        [one] => load_pcb(one, for_diff),
         many => {
             let Some(s) = sch else {
                 return Err(Error::new(ErrorCode::Ambiguous, format!("{} has {} PCB documents", p.path.display(), many.len()))
@@ -297,7 +299,7 @@ fn project_pcb(p: &Project, explicit: Option<&Path>, sch: Option<&Design>, with_
             let want: std::collections::HashSet<String> = s.parts.iter().map(|x| x.designator.to_ascii_uppercase()).collect();
             let mut best: Option<(usize, Loaded)> = None;
             for f in many {
-                let Ok(l) = load_pcb(f, with_rules) else { continue };
+                let Ok(l) = load_pcb(f, for_diff) else { continue };
                 let score = l.design.parts.iter().filter(|x| want.contains(&x.designator.to_ascii_uppercase())).count();
                 if best.as_ref().is_none_or(|(b, _)| score > *b) {
                     best = Some((score, l));
@@ -315,16 +317,16 @@ fn project_pcb(p: &Project, explicit: Option<&Path>, sch: Option<&Design>, with_
 }
 
 /// Load any supported input as a design.
-fn load(input: &Path, source: Option<Source>, pcb_file: Option<&Path>, with_rules: bool, ctx: &Ctx) -> Result<Loaded> {
+fn load(input: &Path, source: Option<Source>, pcb_file: Option<&Path>, for_diff: bool, ctx: &Ctx) -> Result<Loaded> {
     let input = ctx.input(input)?;
     match DocKind::of(&input) {
         DocKind::Project => {
             let p = Project::load(&input)?;
             let mut loaded = match source {
-                Some(Source::Pcb) => project_pcb(&p, pcb_file, None, with_rules),
+                Some(Source::Pcb) => project_pcb(&p, pcb_file, None, for_diff),
                 Some(Source::Sch) => load_project_sch(&p),
                 None if p.docs(DocKind::Schematic).is_empty() && !p.pcbs().is_empty() => {
-                    let mut l = project_pcb(&p, pcb_file, None, with_rules)?;
+                    let mut l = project_pcb(&p, pcb_file, None, for_diff)?;
                     l.warnings.push("the project has no schematics on disk; using its PCB".into());
                     Ok(l)
                 }
@@ -346,7 +348,7 @@ fn load(input: &Path, source: Option<Source>, pcb_file: Option<&Path>, with_rule
             if source == Some(Source::Sch) {
                 return Err(Error::usage("--source sch needs a .PrjPcb or .SchDoc input"));
             }
-            load_pcb(&input, with_rules)
+            load_pcb(&input, for_diff)
         }
         _ => Err(Error::new(ErrorCode::WrongFileType, format!("{} is not a project, schematic or PCB", input.display()))
             .hint("pass a .PrjPcb, .SchDoc or .PcbDoc")),
@@ -577,11 +579,11 @@ fn run_check(input: &Path, pcb_file: Option<&Path>, only: &[String], skip: &[Str
 
 fn run_diff(a: &Path, b: Option<&Path>, rev: Option<&str>, geometry: bool, source: Option<Source>, matching: diff::MatchBy, ctx: &Ctx) -> Result<Out> {
     let a = ctx.input(a)?;
-    let (before_path, after_path, tmp, label_a) = match (b, rev) {
-        (Some(b), None) => (a.clone(), ctx.input(b)?, None, a.display().to_string()),
+    let (before_path, after_path, tmp, label_a, skipped) = match (b, rev) {
+        (Some(b), None) => (a.clone(), ctx.input(b)?, None, a.display().to_string(), vec![]),
         (None, Some(r)) => {
-            let (tmp, copy) = crate::revision::checkout_rev(&a, r)?;
-            (copy, a.clone(), Some(tmp), format!("{}@{r}", a.display()))
+            let (tmp, copy, skipped) = crate::revision::checkout_rev(&a, r)?;
+            (copy, a.clone(), Some(tmp), format!("{}@{r}", a.display()), skipped)
         }
         _ => return Err(Error::usage("give a second file or --rev <revision>")),
     };
@@ -589,7 +591,11 @@ fn run_diff(a: &Path, b: Option<&Path>, rev: Option<&str>, geometry: bool, sourc
         if matches!(DocKind::of(&before_path), DocKind::PcbLib | DocKind::SchLib) {
             return library_diff(&before_path, &after_path, &label_a, ctx);
         }
-        let la = load(&before_path, source, None, true, ctx)?;
+        let mut la = load(&before_path, source, None, true, ctx)?;
+        if !skipped.is_empty() {
+            la.coverage["skipped_documents"] = json!(skipped);
+            la.warnings.push(format!("not in git at the revision, so compared as missing: {}", skipped.join(", ")));
+        }
         let lb = load(&after_path, source, None, true, ctx)?;
         let same_kind = la.source == lb.source;
         if geometry && !(same_kind && la.source == "pcb") {
@@ -613,7 +619,9 @@ fn run_diff(a: &Path, b: Option<&Path>, rev: Option<&str>, geometry: bool, sourc
         }
         for p in &d.parts_changed {
             for c in &p.changes {
-                items.push(json!({"change": "part_changed", "ref": p.designator, "field": c.field, "before": c.before, "after": c.after}));
+                let mut row = json!({"change": "part_changed", "ref": p.designator, "field": c.field, "before": c.before, "after": c.after});
+                if let Some(side) = c.side { row["side"] = json!(side); }
+                items.push(row);
             }
         }
         for r in &d.nets_added {
@@ -656,16 +664,31 @@ fn run_diff(a: &Path, b: Option<&Path>, rev: Option<&str>, geometry: bool, sourc
             summary["rules_changed"] = json!(rd.changed.len());
             identical &= rd.added.is_empty() && rd.removed.is_empty() && rd.changed.is_empty();
         }
-        if DocKind::of(&before_path) == DocKind::Project && DocKind::of(&after_path) == DocKind::Project {
-            let project_changes = diff::project(&Project::load(&before_path)?, &Project::load(&after_path)?);
-            identical &= project_changes.is_empty();
-            for change in &project_changes {
-                let key = change["change"].as_str().unwrap_or("project_changes");
-                let n = summary[key].as_u64().unwrap_or(0);
-                summary[key] = json!(n + 1);
-            }
-            items.extend(project_changes);
+        let mut compared: Vec<String> = ["parts".to_owned()].into_iter().chain(d.part_fields.iter().map(|f| format!("part.{f}"))).collect();
+        compared.push("nets".into());
+        if rd.is_some() { compared.push("rules".into()); }
+        let mut changes = vec![];
+        if let (Some(x), Some(y)) = (&la.classes, &lb.classes) {
+            changes.extend(diff::classes(x, y));
+            compared.push("classes".into());
         }
+        let both = |kind: DocKind| DocKind::of(&before_path) == kind && DocKind::of(&after_path) == kind;
+        if la.source == "schematic" && lb.source == "schematic" && (both(DocKind::Project) || both(DocKind::Schematic)) {
+            let single = after_path.file_name().unwrap_or_default().to_string_lossy();
+            changes.extend(diff::sheet_params(&sheet_params(&before_path)?, &sheet_params(&after_path)?, &single));
+            compared.push("sheet_parameters".into());
+        }
+        if both(DocKind::Project) {
+            changes.extend(diff::project(&Project::load(&before_path)?, &Project::load(&after_path)?));
+            compared.extend(["project_variants".into(), "project_settings".into()]);
+        }
+        identical &= changes.is_empty();
+        for change in &changes {
+            let key = change["change"].as_str().unwrap_or("project_changes");
+            let n = summary[key].as_u64().unwrap_or(0);
+            summary[key] = json!(n + 1);
+        }
+        items.extend(changes);
         let mut warnings: Vec<String> = la.warnings.iter().map(|w| {
             if lb.warnings.contains(w) { format!("both: {w}") } else { format!("before: {w}") }
         }).collect();
@@ -695,11 +718,25 @@ fn run_diff(a: &Path, b: Option<&Path>, rev: Option<&str>, geometry: bool, sourc
         )?;
         let mut data = data;
         data["incomplete"] = json!(la.coverage["incomplete"] == true || lb.coverage["incomplete"] == true);
-        data["coverage"] = json!({"a": la.coverage, "b": lb.coverage});
+        data["coverage"] = json!({"a": la.coverage, "b": lb.coverage, "compared": compared});
         Ok(Out::new(data)?.warnings(warnings))
     })();
     drop(tmp);
     result
+}
+
+/// Document parameters of a schematic input: a lone sheet keyed `""`, a project's sheets by path.
+fn sheet_params(input: &Path) -> Result<std::collections::BTreeMap<(String, String), String>> {
+    let sheets: Vec<(String, PathBuf)> = if DocKind::of(input) == DocKind::Project {
+        Project::load(input)?.docs(DocKind::Schematic).into_iter().filter(|d| d.exists).map(|d| (d.rel.replace('\\', "/"), d.path.clone())).collect()
+    } else {
+        vec![(String::new(), input.to_path_buf())]
+    };
+    let mut params = std::collections::BTreeMap::new();
+    for (sheet, path) in sheets {
+        for p in sch::load(&path)?.parameters { params.insert((sheet.clone(), p.name), p.value); }
+    }
+    Ok(params)
 }
 
 fn library_diff(a: &Path, b: &Path, label_a: &str, _ctx: &Ctx) -> Result<Out> {
@@ -769,7 +806,9 @@ fn diff_view(data: &mut Value, summary_only: bool, by: Option<DiffGroup>, ignore
         let mut parts: std::collections::BTreeMap<String, Vec<Value>> = Default::default();
         items.retain(|row| {
             if row["change"] != "part_changed" { return true; }
-            parts.entry(row["ref"].as_str().unwrap_or("").to_owned()).or_default().push(json!({"field":row["field"],"before":row["before"],"after":row["after"]}));
+            let mut field = json!({"field":row["field"],"before":row["before"],"after":row["after"]});
+            if let Some(side) = row.get("side") { field["side"] = side.clone(); }
+            parts.entry(row["ref"].as_str().unwrap_or("").to_owned()).or_default().push(field);
             false
         });
         items.extend(parts.into_iter().map(|(name, fields)| json!({"change":"part_changed","ref":name,"fields":fields})));
