@@ -171,7 +171,7 @@ impl Host for WineHost {
         Ok(ms.to_string())
     }
 
-    fn stage_in(&self, root: &Path, file: &Path) -> Result<Staged> {
+    fn stage_in(&self, set: &crate::ops::StageSet, file: &Path) -> Result<Staged> {
         let abs = paths::absolute(file);
         if !abs.exists() {
             return Err(Error::new(ErrorCode::FileNotFound, format!("{} does not exist", abs.display())));
@@ -180,7 +180,7 @@ impl Host for WineHost {
             return Err(Error::new(ErrorCode::DesignerUnavailable, format!("Altium (inside the Bottles sandbox) cannot see {}", abs.display()))
                 .hint(format!("grant access once: `ace designer grant {}`", dir.display())));
         }
-        let root = paths::absolute(root);
+        let root = paths::absolute(&set.root);
         Ok(Staged {
             win_root: paths::to_windows(&self.inst.prefix, &root),
             win_file: paths::to_windows(&self.inst.prefix, &abs),

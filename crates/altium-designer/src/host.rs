@@ -74,12 +74,11 @@ pub trait Host {
     /// Kill Altium (unsaved work is lost). Returns the number of processes signalled.
     fn kill_altium(&self) -> Result<usize>;
 
-    /// Make `file` (inside `root`) visible to Altium. `root` must contain every document the
-    /// operation touches (the project folder plus any `..\` sheets it references).
-    fn stage_in(&self, root: &Path, file: &Path) -> Result<Staged>;
+    /// Make `file` (one of `set.files`) visible to Altium under `set.root`.
+    fn stage_in(&self, set: &crate::ops::StageSet, file: &Path) -> Result<Staged>;
     /// Resolve an already staged tree without uploading local files or changing its baseline.
     fn staged_location(&self, root: &Path, file: &Path) -> Result<Staged> {
-        self.stage_in(root, file)
+        self.stage_in(&crate::ops::StageSet { root: root.to_path_buf(), files: vec![] }, file)
     }
     /// Bring back files Altium created or changed under the staged root since the operation
     /// started (`since` is the value [`Host::clock`] returned before it). Returns local paths.

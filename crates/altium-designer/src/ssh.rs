@@ -8,10 +8,10 @@
 //! scheduled task that runs `C:\altium-cli-extended\run.cmd` in that session — GUI apps such as Altium
 //! cannot start from an SSH session.
 //!
-//! Projects are synced, not shared: [`SshHost::stage_in`] copies only files whose size or
-//! modification time changed since the last sync (a manifest per project root), so documents
-//! Altium already has open are not rewritten under it. [`SshHost::stage_out`] brings back what
-//! Altium wrote.
+//! Projects are synced, not shared: [`SshHost::stage_in`] copies the project file and the
+//! documents it lists, and only those whose size or modification time changed since the last
+//! sync (a manifest per project root), so documents Altium already has open are not rewritten
+//! under it. [`SshHost::stage_out`] brings back what Altium wrote.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -140,6 +140,7 @@ impl SshHost {
     /// Connect and locate Altium on the Windows machine. The Altium folder is cached (checked
     /// with one cheap sftp call); PowerShell only runs on first contact or after a reinstall.
     pub fn connect(sc: SshConfig) -> Result<SshHost> {
+        check_destination(&sc)?;
         let cache = Self::load_cache(&sc);
         let mut h = SshHost { sc, altium_dir: cache.altium_dir.clone() };
         if !h.altium_dir.is_empty() && h.exists(&x2_path(&h.altium_dir))? {
@@ -249,18 +250,22 @@ impl SshHost {
         }
         let cm = home().join(".ssh").join(format!("cm-altium-{}-{}", self.sc.host, self.sc.port));
         c.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=60", "-o", "StrictHostKeyChecking=yes"]);
-        c.arg("-o").arg(format!("UserKnownHostsFile={}", home().join(".ssh/known_hosts_altium").display()));
+        c.arg("-o").arg(path_opt("UserKnownHostsFile", &home().join(".ssh/known_hosts_altium"), ""));
         if cfg!(unix) {
             c.args(["-o", "ControlMaster=auto", "-o", "ControlPersist=600"]);
-            c.arg("-o").arg(format!("ControlPath={}", cm.display()));
+            c.arg("-o").arg(path_opt("ControlPath", &cm, "-%r"));
         }
+    }
+
+    fn destination(&self) -> [String; 2] {
+        ["--".into(), format!("{}@{}", self.sc.user, self.sc.host)]
     }
 
     fn ssh_base(&self) -> Command {
         let mut c = Command::new("ssh");
         c.arg("-p").arg(self.sc.port.to_string());
         self.common_opts(&mut c);
-        c.arg(format!("{}@{}", self.sc.user, self.sc.host));
+        c.args(self.destination());
         c
     }
 
@@ -309,7 +314,7 @@ impl SshHost {
         let mut c = Command::new("sftp");
         c.arg("-q").arg("-P").arg(self.sc.port.to_string());
         self.common_opts(&mut c);
-        c.args(["-b", "-"]).arg(format!("{}@{}", self.sc.user, self.sc.host));
+        c.args(["-b", "-"]).args(self.destination());
         let mut child = c
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -421,6 +426,52 @@ fn parse_tasklist_pid(out: &str) -> Option<u32> {
 /// `C:\a\b` as an sftp path (`/C:/a/b`).
 fn sftp_path(win: &str) -> String {
     format!("/{}", win.replace('\\', "/"))
+}
+
+/// A user or host starting with `-` would reach ssh and sftp as an option.
+fn check_destination(sc: &SshConfig) -> Result<()> {
+    for (key, value) in [("ssh_user", &sc.user), ("ssh_host", &sc.host)] {
+        if value.starts_with('-') {
+            return Err(Error::usage(format!("{key} must not start with '-': {value:?}")).hint(format!("`ace designer config --set {key}=<name>`")));
+        }
+    }
+    Ok(())
+}
+
+/// `-o` argument for a path. OpenSSH splits `-o` values on whitespace unless quoted and
+/// expands `%` tokens, so the path is quoted and its `%` doubled; `tokens` is appended as is.
+fn path_opt(key: &str, path: &Path, tokens: &str) -> String {
+    let value = format!("{}{tokens}", path.to_string_lossy().replace('%', "%%"));
+    format!("{key}=\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// The `tar -T` list for `files` (relative to the archive root): NUL-separated so names with
+/// newlines survive, `./`-prefixed so a name starting with `-` is not an option. Read with
+/// `--null`, which GNU tar and bsdtar both take literally (no backslash unquoting).
+fn tar_list(files: &[String]) -> Vec<u8> {
+    files.iter().flat_map(|f| format!("./{f}\0").into_bytes()).collect()
+}
+
+fn pack(root: &Path, files: &[String], list: &Path, tarf: &Path) -> Result<()> {
+    std::fs::write(list, tar_list(files))?;
+    let st = Command::new("tar").arg("-cf").arg(tarf).arg("-C").arg(root).arg("--null").arg("-T").arg(list).status()?;
+    if !st.success() {
+        return Err(Error::new(ErrorCode::Io, "tar failed while packing the project"));
+    }
+    Ok(())
+}
+
+/// Size and modification time of each of `files` (absolute, under `root`), keyed by relative path.
+fn stamps(root: &Path, files: &[PathBuf]) -> BTreeMap<String, (u64, u128)> {
+    let mut out = BTreeMap::new();
+    for p in files {
+        let (Ok(md), Ok(rel)) = (std::fs::symlink_metadata(p), p.strip_prefix(root)) else { continue };
+        if md.is_file() {
+            let mt = md.modified().ok().and_then(|m| m.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+            out.insert(rel.to_string_lossy().into_owned(), (md.len(), mt));
+        }
+    }
+    out
 }
 
 fn unreachable_error(out: &Output) -> Error {
@@ -634,9 +685,9 @@ impl Host for SshHost {
         Ok(self.ps("(Get-Date).ToUniversalTime().ToString('o')")?.trim().to_owned())
     }
 
-    fn stage_in(&self, root: &Path, file: &Path) -> Result<Staged> {
-        let root = crate::paths::absolute(root);
-        let file = crate::paths::absolute(file);
+    fn stage_in(&self, set: &crate::ops::StageSet, file: &Path) -> Result<Staged> {
+        let root = crate::paths::absolute(&set.root);
+        let file = crate::paths::resolve(file);
         let rel_file = file.strip_prefix(&root).map_err(|_| Error::internal(format!("{} is not under {}", file.display(), root.display())))?;
         let key = fnv(&root.to_string_lossy());
         let base = root.file_name().map(|n| n.to_string_lossy().replace(' ', "_")).unwrap_or_else(|| "root".into());
@@ -644,8 +695,7 @@ impl Host for SshHost {
 
         let mpath = Self::state_dir()?.join(format!("{key}.json"));
         let old: Manifest = std::fs::read(&mpath).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-        let mut now = Manifest::default();
-        scan(&root, &root, &mut now.files);
+        let now = Manifest { files: stamps(&root, &set.files) };
         let changed: Vec<String> = now.files.iter().filter(|(k, v)| old.files.get(*k) != Some(v)).map(|(k, _)| k.clone()).collect();
         let remote_missing = !self.exists(&win_root)?;
         let send: Vec<String> = if remote_missing { now.files.keys().cloned().collect() } else { changed };
@@ -654,11 +704,7 @@ impl Host for SshHost {
             let tmp = Self::local_tmp()?;
             let list = tmp.join(format!("files-{key}.txt"));
             let tarf = tmp.join(format!("in-{key}.tar"));
-            std::fs::write(&list, send.join("\n") + "\n")?;
-            let st = Command::new("tar").arg("-cf").arg(&tarf).arg("-C").arg(&root).arg("-T").arg(&list).status()?;
-            if !st.success() {
-                return Err(Error::new(ErrorCode::Io, "tar failed while packing the project"));
-            }
+            pack(&root, &send, &list, &tarf)?;
             let win_tar = format!(r"{ROOT}\work\in-{key}.tar");
             self.write(&win_tar, &std::fs::read(&tarf)?)?;
             self.ps(&format!(
@@ -681,7 +727,7 @@ impl Host for SshHost {
 
     fn staged_location(&self, root: &Path, file: &Path) -> Result<Staged> {
         let root = crate::paths::absolute(root);
-        let file = crate::paths::absolute(file);
+        let file = crate::paths::resolve(file);
         let rel = file.strip_prefix(&root).map_err(|_| Error::usage("file is outside the staged root"))?;
         let key = fnv(&root.to_string_lossy());
         let base = root.file_name().map(|n| n.to_string_lossy().replace(' ', "_")).unwrap_or_else(|| "root".into());
@@ -799,6 +845,64 @@ mod tests {
         }
         #[cfg(not(unix))]
         std::fs::remove_dir(&parent).unwrap();
+    }
+
+    #[test]
+    fn destination_cannot_become_an_option() {
+        let sc = |user: &str, host: &str| SshConfig { host: host.into(), port: 22, user: user.into(), key: None };
+        for (user, host) in [("-oProxyCommand=true", "winbox"), ("bob", "-oProxyCommand=true"), ("-l", "-p")] {
+            assert_eq!(check_destination(&sc(user, host)).unwrap_err().code, ErrorCode::Usage, "{user}@{host}");
+        }
+        assert!(check_destination(&sc("john smith", "fe80::1%eth0")).is_ok());
+        let host = SshHost { sc: sc("bob", "winbox"), altium_dir: String::new() };
+        let args: Vec<_> = host.ssh_base().get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert_eq!(args[args.len() - 2..], ["--", "bob@winbox"]);
+    }
+
+    #[test]
+    fn path_options_survive_spaces_percent_and_quotes() {
+        assert_eq!(path_opt("UserKnownHostsFile", Path::new("/home/John Smith/.ssh/known_hosts_altium"), ""), "UserKnownHostsFile=\"/home/John Smith/.ssh/known_hosts_altium\"");
+        assert_eq!(path_opt("ControlPath", Path::new("/home/u/.ssh/cm-altium-fe80::1%eth0-22"), "-%r"), "ControlPath=\"/home/u/.ssh/cm-altium-fe80::1%%eth0-22-%r\"");
+        assert_eq!(path_opt("UserKnownHostsFile", Path::new(r#"C:\Users\a "b"\k"#), ""), r#"UserKnownHostsFile="C:\\Users\\a \"b\"\\k""#);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pack_archives_every_listed_name_literally() {
+        let dir = std::env::temp_dir().join(format!("ace-pack-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let src = dir.join("src");
+        std::fs::create_dir_all(src.join("sub")).unwrap();
+        let names = ["-old.SchDoc", "--exclude=board.PcbDoc", "a\\b.txt", "nl\nname.txt", "sub/sp ace.txt", "x'$(echo hi)`id`;.txt", "board.PcbDoc"];
+        for n in names {
+            std::fs::write(src.join(n), n).unwrap();
+        }
+        std::fs::write(src.join("unlisted.txt"), b"x").unwrap();
+        let files: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+        pack(&src, &files, &dir.join("list"), &dir.join("out.tar")).unwrap();
+        let out = dir.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        assert!(Command::new("tar").arg("-xf").arg(dir.join("out.tar")).arg("-C").arg(&out).status().unwrap().success());
+        for n in names {
+            assert_eq!(std::fs::read_to_string(out.join(n)).unwrap(), n);
+        }
+        assert!(!out.join("unlisted.txt").exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stamps_cover_listed_regular_files_only() {
+        let dir = std::env::temp_dir().join(format!("ace-stamps-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("p")).unwrap();
+        std::fs::write(dir.join("p/A.SchDoc"), b"abc").unwrap();
+        std::fs::write(dir.join("outside.txt"), b"x").unwrap();
+        std::os::unix::fs::symlink(dir.join("outside.txt"), dir.join("p/link.SchDoc")).unwrap();
+        let got = stamps(&dir.join("p"), &[dir.join("p/A.SchDoc"), dir.join("p/link.SchDoc"), dir.join("outside.txt"), dir.join("p/missing.SchDoc")]);
+        assert_eq!(got.keys().collect::<Vec<_>>(), ["A.SchDoc"]);
+        assert_eq!(got["A.SchDoc"].0, 3);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

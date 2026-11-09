@@ -538,7 +538,7 @@ mod tests {
         fn altium_pid(&self) -> Result<Option<u32>> { unreachable!() }
         fn kill_altium(&self) -> Result<usize> { unreachable!() }
         fn clock(&self) -> Result<String> { unreachable!() }
-        fn stage_in(&self, _: &Path, _: &Path) -> Result<crate::host::Staged> { unreachable!() }
+        fn stage_in(&self, _: &crate::ops::StageSet, _: &Path) -> Result<crate::host::Staged> { unreachable!() }
         fn stage_out(&self, _: &crate::host::Staged, _: &str, _: altium_format::fsx::WriteOpts) -> Result<(Vec<PathBuf>, String)> { unreachable!() }
     }
 
