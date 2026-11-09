@@ -181,6 +181,7 @@ ace diff "$P" --rev HEAD~1 --source pcb
 * Start with `--summary`, then filter with `--where` and `--fields`.
 * Components match by Unique ID before designator, so re-annotation appears as `part_renamed` while preserving concurrent parameter diffs.
 * `identical: true` on schematics does not cover the board — always run the `.PcbDoc` diff (or `--source pcb`) as well.
+* `coverage.compared` names what the diff compared: parts and each part field, nets, PCB rules and classes, sheet parameters, and project variants and settings. A change outside that list does not affect `identical`. A field or parameter present on only one side carries `side: only_in_a` or `only_in_b`, so an emptied value and a removed one read differently.
 
 ### Gate a design in CI
 

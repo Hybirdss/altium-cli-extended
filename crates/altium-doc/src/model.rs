@@ -45,6 +45,9 @@ pub struct Part {
     pub exclude_from_bom: bool,
     /// Component kind as Altium names it (`Standard`, `Mechanical`, `Graphical`, `NetTie`, ...).
     pub kind: String,
+    /// PCB component settings with no schematic counterpart (`locked`, `height`, ...), as text.
+    #[serde(skip)]
+    pub pcb_fields: IndexMap<&'static str, String>,
 }
 
 impl Part {

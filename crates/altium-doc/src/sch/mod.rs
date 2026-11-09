@@ -72,6 +72,7 @@ pub(crate) fn merge_part(parts: &mut Vec<Part>, c: &Component, designator: &str,
         rotation: Some(c.orientation),
         exclude_from_bom: c.exclude_from_bom(),
         kind: c.kind.clone(),
+        pcb_fields: Default::default(),
     });
 }
 

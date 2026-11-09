@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 
 use altium_doc::model::{Design, Part};
-use altium_doc::pcb::Rule;
+use altium_doc::pcb::{Class, Rule};
 
 use crate::designator;
 
@@ -14,6 +14,9 @@ pub struct FieldChange {
     pub field: String,
     pub before: String,
     pub after: String,
+    /// `only_in_a` / `only_in_b` when one side lacks the field (an empty value is not missing).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub side: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -57,6 +60,8 @@ pub struct Diff {
     pub nets_renamed: Vec<NetRename>,
     pub nets_changed: Vec<NetChange>,
     pub identical: bool,
+    /// Part fields compared on at least one part (`param:*` collapsed to `parameters`).
+    pub part_fields: BTreeSet<String>,
 }
 
 fn part_fields(p: &Part) -> BTreeMap<String, String> {
@@ -65,6 +70,11 @@ fn part_fields(p: &Part) -> BTreeMap<String, String> {
     m.insert("footprint".to_owned(), p.footprint.clone());
     m.insert("lib_ref".to_owned(), p.lib_ref.clone());
     m.insert("description".to_owned(), p.description.clone());
+    m.insert("kind".to_owned(), p.kind.clone());
+    m.insert("exclude_from_bom".to_owned(), p.exclude_from_bom.to_string());
+    for (k, v) in &p.pcb_fields {
+        m.insert(k.to_string(), v.clone());
+    }
     if let Some(s) = &p.side {
         m.insert("side".to_owned(), s.clone());
     }
@@ -123,7 +133,10 @@ pub fn diff_with(a: &Design, b: &Design, geometry: bool, matching: MatchBy) -> D
     let parts_renamed: Vec<_> = pairs.iter().filter(|(old, new)| old != new).map(|(old, new)| PartRename {
         before_ref: old.clone(), designator: new.clone(), unique_id: pb[new].unique_id.clone(),
     }).collect();
+    // Kind names and PCB-only settings are comparable only between two designs of one source.
+    let same_source = a.source == b.source;
     let mut parts_changed = vec![];
+    let mut compared = BTreeSet::new();
     for (old, k) in &pairs {
         let (x, y) = (pa[old], pb[k]);
         let (fx, fy) = (part_fields(x), part_fields(y));
@@ -131,9 +144,17 @@ pub fn diff_with(a: &Design, b: &Design, geometry: bool, matching: MatchBy) -> D
         let changes: Vec<FieldChange> = keys
             .into_iter()
             .filter(|f| geometry || !matches!(f.as_str(), "position" | "rotation" | "side"))
+            .filter(|f| same_source || !(matches!(f.as_str(), "kind" | "exclude_from_bom")
+                || x.pcb_fields.contains_key(f.as_str()) || y.pcb_fields.contains_key(f.as_str())))
+            .inspect(|f| { compared.insert(if f.starts_with("param:") { "parameters".to_owned() } else { f.to_string() }); })
             .filter_map(|f| {
-                let (bv, av) = (fx.get(f).cloned().unwrap_or_default(), fy.get(f).cloned().unwrap_or_default());
-                (bv != av).then(|| FieldChange { field: f.clone(), before: bv, after: av })
+                let (bv, av) = (fx.get(f), fy.get(f));
+                (bv != av).then(|| FieldChange {
+                    field: f.clone(),
+                    before: bv.cloned().unwrap_or_default(),
+                    after: av.cloned().unwrap_or_default(),
+                    side: if bv.is_none() { Some("only_in_b") } else if av.is_none() { Some("only_in_a") } else { None },
+                })
             })
             .collect();
         if !changes.is_empty() {
@@ -183,7 +204,7 @@ pub fn diff_with(a: &Design, b: &Design, geometry: bool, matching: MatchBy) -> D
         && nets_removed.is_empty()
         && nets_renamed.is_empty()
         && nets_changed.is_empty();
-    Diff { parts_added, parts_removed, parts_changed, parts_renamed, nets_added, nets_removed, nets_renamed, nets_changed, identical }
+    Diff { parts_added, parts_removed, parts_changed, parts_renamed, nets_added, nets_removed, nets_renamed, nets_changed, identical, part_fields: compared }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -246,6 +267,41 @@ pub fn rules(a: &[Rule], b: &[Rule]) -> RuleDiff {
         }
     }
     d
+}
+
+/// PCB classes matched by kind and name: added, removed, and member changes.
+pub fn classes(a: &[Class], b: &[Class]) -> Vec<serde_json::Value> {
+    use serde_json::json;
+    let keyed = |cs: &[Class]| cs.iter().map(|c| ((c.kind.clone(), c.name.clone()), c.members.iter().cloned().collect::<BTreeSet<_>>()))
+        .collect::<BTreeMap<_, _>>();
+    let (ca, cb) = (keyed(a), keyed(b));
+    let mut rows = vec![];
+    for key @ (kind, name) in ca.keys().chain(cb.keys()).collect::<BTreeSet<_>>() {
+        match (ca.get(key), cb.get(key)) {
+            (None, Some(m)) => rows.push(json!({"change":"class_added","ref":name,"kind":kind,"members":sorted(m.iter().cloned().collect())})),
+            (Some(m), None) => rows.push(json!({"change":"class_removed","ref":name,"kind":kind,"members":sorted(m.iter().cloned().collect())})),
+            (Some(x), Some(y)) if x != y => rows.push(json!({"change":"class_changed","ref":name,"kind":kind,
+                "added_members":sorted(y.difference(x).cloned().collect()),"removed_members":sorted(x.difference(y).cloned().collect())})),
+            _ => {}
+        }
+    }
+    rows
+}
+
+/// Schematic document parameters keyed by (sheet, name). `single` names the sheet keyed `""`
+/// (a lone sheet, so two copies with different file names still match).
+pub fn sheet_params(a: &BTreeMap<(String, String), String>, b: &BTreeMap<(String, String), String>, single: &str) -> Vec<serde_json::Value> {
+    use serde_json::json;
+    let mut rows = vec![];
+    for key @ (sheet, name) in a.keys().chain(b.keys()).collect::<BTreeSet<_>>() {
+        let (bv, av) = (a.get(key), b.get(key));
+        if bv == av { continue; }
+        let mut row = json!({"change":"sheet_param_changed","ref": if sheet.is_empty() { single } else { sheet },"field":name,
+            "before":bv.cloned().unwrap_or_default(),"after":av.cloned().unwrap_or_default()});
+        if bv.is_none() { row["side"] = json!("only_in_b"); } else if av.is_none() { row["side"] = json!("only_in_a"); }
+        rows.push(row);
+    }
+    rows
 }
 
 /// Project-level changes, independent of the chosen schematic/PCB comparison source.

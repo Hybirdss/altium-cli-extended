@@ -178,6 +178,7 @@ ace diff "$P" --rev HEAD~1 --source pcb
 * 먼저 `--summary`를 확인한 뒤 `--where`와 `--fields`로 필요한 행만 좁혀 보세요.
 * 부품은 Designator보다 Unique ID로 먼저 매칭되므로, 재번호 부여(Re-annotation)는 `part_renamed`로 표시되며 동시에 변경된 파라미터 차이도 보존됩니다.
 * 회로도에서 `identical: true`가 나와도 보드 변경 여부는 알 수 없으므로 반드시 `.PcbDoc` diff(또는 `--source pcb`)도 함께 실행하세요.
+* `coverage.compared`에는 diff가 비교한 항목(부품과 부품별 필드, 넷, PCB 규칙과 클래스, 시트 파라미터, 프로젝트 variant와 설정)이 나옵니다. 이 목록에 없는 변경은 `identical`에 반영되지 않습니다. 한쪽에만 있는 필드나 파라미터에는 `side: only_in_a` 또는 `only_in_b`가 붙으므로, 값을 비운 경우와 삭제한 경우가 구분됩니다.
 
 ### CI에서 설계 게이트 적용
 
