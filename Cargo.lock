@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "altium-analysis"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "altium-core",
  "altium-doc",
@@ -32,7 +32,7 @@ dependencies = [
 
 [[package]]
 name = "altium-cli-extended"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "altium-analysis",
  "altium-core",
@@ -50,7 +50,7 @@ dependencies = [
 
 [[package]]
 name = "altium-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "altium-designer"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "altium-core",
  "altium-doc",
@@ -71,7 +71,7 @@ dependencies = [
 
 [[package]]
 name = "altium-doc"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "altium-core",
  "altium-format",
@@ -84,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "altium-format"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "altium-core",
  "cfb",

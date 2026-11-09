@@ -1,6 +1,6 @@
 # ace command reference
 
-Generated from the command table of `ace 0.1.0` (`ace skill --file commands`). `backend/effect` after each name: native commands need nothing installed; designer commands drive Altium Designer; native `write` commands support `--dry-run` and keep the first `.bak` unless `--no-backup` is set.
+Generated from the command table of `ace 0.1.1` (`ace skill --file commands`). `backend/effect` after each name: native commands need nothing installed; designer commands drive Altium Designer; native `write` commands support `--dry-run` and keep the first `.bak` unless `--no-backup` is set.
 
 ## Global flags
 
