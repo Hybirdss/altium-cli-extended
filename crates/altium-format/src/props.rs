@@ -35,8 +35,19 @@ thread_local! {
 
 /// ANSI code pages Altium files are commonly saved in, tried when the text does not match.
 const CANDIDATES: &[&[u8]] = &[
-    b"gbk", b"big5", b"shift_jis", b"euc-kr", b"windows-1251", b"windows-1250", b"windows-1253",
-    b"windows-1254", b"windows-1255", b"windows-1256", b"windows-1257", b"windows-1258", b"windows-874",
+    b"gbk",
+    b"big5",
+    b"shift_jis",
+    b"euc-kr",
+    b"windows-1251",
+    b"windows-1250",
+    b"windows-1253",
+    b"windows-1254",
+    b"windows-1255",
+    b"windows-1256",
+    b"windows-1257",
+    b"windows-1258",
+    b"windows-874",
 ];
 
 /// A field was stored in a different code page than `--codepage`: returns the one that
@@ -47,17 +58,24 @@ pub fn codepage_mismatch() -> Option<&'static str> {
 
 /// Compare an ANSI field with its `%UTF8%` copy; remember a code page that fits better.
 fn note_pair(ansi: &[u8], utf8: &str) {
-    if ansi.is_ascii() || utf8.is_ascii() || ansi.contains(&b'?') || MISMATCH.with(|m| m.get()).is_some() {
+    if ansi.is_ascii()
+        || utf8.is_ascii()
+        || ansi.contains(&b'?')
+        || MISMATCH.with(|m| m.get()).is_some()
+    {
         return;
     }
     let (enc, _, bad) = codepage().encode(utf8);
     if !bad && &*enc == ansi {
         return;
     }
-    let fit = CANDIDATES.iter().filter_map(|l| Encoding::for_label(l)).find(|e| {
-        let (b, _, bad) = e.encode(utf8);
-        !bad && &*b == ansi
-    });
+    let fit = CANDIDATES
+        .iter()
+        .filter_map(|l| Encoding::for_label(l))
+        .find(|e| {
+            let (b, _, bad) = e.encode(utf8);
+            !bad && &*b == ansi
+        });
     if let Some(e) = fit {
         MISMATCH.with(|m| m.set(Some(e)));
     }
@@ -77,9 +95,14 @@ type Letter = fn(char) -> bool;
 fn guesses() -> [(&'static Encoding, Letter); 4] {
     [
         (GBK, |c| matches!(c, '\u{4e00}'..='\u{9fff}')),
-        (SHIFT_JIS, |c| matches!(c, '\u{3041}'..='\u{30ff}' | '\u{4e00}'..='\u{9fff}')),
+        (
+            SHIFT_JIS,
+            |c| matches!(c, '\u{3041}'..='\u{30ff}' | '\u{4e00}'..='\u{9fff}'),
+        ),
         (EUC_KR, |c| matches!(c, '\u{ac00}'..='\u{d7a3}')),
-        (WINDOWS_1251, |c| matches!(c, '\u{410}'..='\u{44f}' | '\u{401}' | '\u{451}')),
+        (WINDOWS_1251, |c| {
+            matches!(c, '\u{410}'..='\u{44f}' | '\u{401}' | '\u{451}')
+        }),
     ]
 }
 
@@ -87,7 +110,10 @@ fn guesses() -> [(&'static Encoding, Letter); 4] {
 /// non-ASCII characters, which accented Latin text does not produce, and exactly one candidate
 /// decodes it into nothing but letters of its script. Two fits mean no guess.
 fn note_ansi(b: &[u8]) {
-    if codepage() != WINDOWS_1252 || !GUESSING.with(|g| g.get()) || GUESS.with(|g| g.get()).is_some() {
+    if codepage() != WINDOWS_1252
+        || !GUESSING.with(|g| g.get())
+        || GUESS.with(|g| g.get()).is_some()
+    {
         return;
     }
     if !b.split(u8::is_ascii).any(|run| run.len() >= 4) {
@@ -96,12 +122,15 @@ fn note_ansi(b: &[u8]) {
     // GBK and EUC-KR letters count only in their GB2312 and KS X 1001 cores (byte pairs of
     // 0xA1 or above): their extensions also decode Shift_JIS kana and kanji, as rare hanzi or
     // Hangul.
-    let core = b.split(u8::is_ascii).all(|run| run.len() % 2 == 0 && run.iter().all(|&x| x >= 0xa1));
+    let core = b
+        .split(u8::is_ascii)
+        .all(|run| run.len() % 2 == 0 && run.iter().all(|&x| x >= 0xa1));
     let fits: Vec<_> = guesses()
         .into_iter()
         .filter(|&(enc, letter)| {
             let (text, bad) = enc.decode_without_bom_handling(b);
-            !bad && (core || (enc != GBK && enc != EUC_KR)) && text.chars().all(|c| c.is_ascii() || letter(c))
+            !bad && (core || (enc != GBK && enc != EUC_KR))
+                && text.chars().all(|c| c.is_ascii() || letter(c))
         })
         .collect();
     if let [(enc, _)] = fits[..] {
@@ -118,9 +147,16 @@ pub fn check_mixing(text: &str) -> Result<()> {
     let confirmed = MISMATCH.with(|m| m.get());
     match confirmed.or(GUESS.with(|g| g.get())) {
         Some(file) => {
-            let mut hint = format!("rerun with --codepage {} (or set ACE_CODEPAGE)", file.name().to_ascii_lowercase());
+            let mut hint = format!(
+                "rerun with --codepage {} (or set ACE_CODEPAGE)",
+                file.name().to_ascii_lowercase()
+            );
             if confirmed.is_none() {
-                hint.push_str(&format!("; if the file really is {}, pass --codepage {} to stop guessing", codepage().name(), codepage().name().to_ascii_lowercase()));
+                hint.push_str(&format!(
+                    "; if the file really is {}, pass --codepage {} to stop guessing",
+                    codepage().name(),
+                    codepage().name().to_ascii_lowercase()
+                ));
             }
             Err(Error::new(
                 ErrorCode::Unsafe,
@@ -174,7 +210,10 @@ pub fn encode_ansi(s: &str) -> Vec<u8> {
 /// Decode a comma-separated list of Unicode code points (`71,78,68` → `GND`), the form Altium
 /// uses for `UNICODE__KEY` values, polygon names and `ENCODEDTEXT` entries.
 pub fn codepoints(s: &str) -> String {
-    s.split(',').filter_map(|c| c.trim().parse::<u32>().ok()).filter_map(char::from_u32).collect()
+    s.split(',')
+        .filter_map(|c| c.trim().parse::<u32>().ok())
+        .filter_map(char::from_u32)
+        .collect()
 }
 
 impl Props {
@@ -195,7 +234,9 @@ impl Props {
             if field.is_empty() {
                 continue;
             }
-            let Some(eq) = field.iter().position(|&b| b == b'=') else { continue };
+            let Some(eq) = field.iter().position(|&b| b == b'=') else {
+                continue;
+            };
             if !field[eq + 1..].is_ascii() {
                 ansi.push((&field[..eq], &field[eq + 1..]));
             }
@@ -239,7 +280,9 @@ impl Props {
 
     pub fn remove(&mut self, key: &str) -> bool {
         let k = key.to_ascii_uppercase();
-        let Some(i) = self.index.shift_remove(&k) else { return false };
+        let Some(i) = self.index.shift_remove(&k) else {
+            return false;
+        };
         self.entries.remove(i);
         for v in self.index.values_mut() {
             if *v > i {
@@ -262,9 +305,10 @@ impl Props {
             return Some(v.to_owned());
         }
         if self.raw("UNICODE").is_some_and(|u| u.contains("EXISTS"))
-            && let Some(list) = self.raw(&format!("UNICODE__{key}")) {
-                return Some(codepoints(list));
-            }
+            && let Some(list) = self.raw(&format!("UNICODE__{key}"))
+        {
+            return Some(codepoints(list));
+        }
         self.raw(key).map(str::to_owned)
     }
 
@@ -278,7 +322,9 @@ impl Props {
 
     pub fn int(&self, key: &str) -> Option<i64> {
         let v = self.raw(key)?.trim();
-        v.parse::<i64>().ok().or_else(|| v.parse::<f64>().ok().map(|f| f as i64))
+        v.parse::<i64>()
+            .ok()
+            .or_else(|| v.parse::<f64>().ok().map(|f| f as i64))
     }
 
     pub fn int_or(&self, key: &str, d: i64) -> i64 {
@@ -290,7 +336,10 @@ impl Props {
     }
 
     pub fn bool(&self, key: &str) -> bool {
-        matches!(self.raw(key).map(|v| v.to_ascii_uppercase()).as_deref(), Some("T" | "TRUE"))
+        matches!(
+            self.raw(key).map(|v| v.to_ascii_uppercase()).as_deref(),
+            Some("T" | "TRUE")
+        )
     }
 
     /// PCB length such as `"10mil"`.
@@ -364,12 +413,21 @@ mod tests {
 
     #[test]
     fn guesses_the_code_page_of_text_without_utf8_copies() {
-        assert_eq!(guess(b"ComponentLink1Description=\xb9\xa9\xd3\xa6\xc9\xcc\xc1\xb4\xbd\xd3"), Some("GBK"));
-        assert_eq!(guess(b"OutputMedium4=\xcf\xe5\xf7\xe0\xf2\xea\xe0 100\xf560"), Some("windows-1251"));
+        assert_eq!(
+            guess(b"ComponentLink1Description=\xb9\xa9\xd3\xa6\xc9\xcc\xc1\xb4\xbd\xd3"),
+            Some("GBK")
+        );
+        assert_eq!(
+            guess(b"OutputMedium4=\xcf\xe5\xf7\xe0\xf2\xea\xe0 100\xf560"),
+            Some("windows-1251")
+        );
         assert_eq!(guess(b"\x93d\x8c\xb9\x89\xf1\x98H"), Some("Shift_JIS"));
         // Hangul reads as GB2312 hanzi too: two fits, no guess.
         assert_eq!(guess(b"\xc7\xd1\xb1\xb9\xbe\xee"), None);
-        assert_eq!(guess(b"R\xe9sistance \xfcber K\xfchlk\xf6rper, Gr\xf6\xdfe \xb15% 25\xb0C"), None);
+        assert_eq!(
+            guess(b"R\xe9sistance \xfcber K\xfchlk\xf6rper, Gr\xf6\xdfe \xb15% 25\xb0C"),
+            None
+        );
         assert_eq!(guess(b"\xc4\xd6\xdc\xdf"), None);
     }
 

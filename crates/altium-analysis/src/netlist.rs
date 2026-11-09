@@ -19,7 +19,11 @@ pub struct NetSummary {
 }
 
 pub fn summarize(net: &Net) -> NetSummary {
-    let mut nodes: Vec<String> = net.nodes.iter().map(|n| format!("{}.{}", n.designator, n.pin)).collect();
+    let mut nodes: Vec<String> = net
+        .nodes
+        .iter()
+        .map(|n| format!("{}.{}", n.designator, n.pin))
+        .collect();
     nodes.sort_by(|a, b| designator::cmp(a, b));
     nodes.dedup();
     NetSummary {
@@ -43,7 +47,11 @@ pub fn pin_map(design: &Design) -> Vec<(String, String, String)> {
     let mut v: Vec<(String, String, String)> = design
         .nets
         .iter()
-        .flat_map(|n| n.nodes.iter().map(move |x| (x.designator.clone(), x.pin.clone(), n.name.clone())))
+        .flat_map(|n| {
+            n.nodes
+                .iter()
+                .map(move |x| (x.designator.clone(), x.pin.clone(), n.name.clone()))
+        })
         .collect();
     v.sort_by(|a, b| designator::cmp(&a.0, &b.0).then(designator::cmp(&a.1, &b.1)));
     v
@@ -55,7 +63,10 @@ pub fn to_protel(design: &Design) -> String {
     let mut parts = design.parts.clone();
     parts.sort_by(|a, b| designator::cmp(&a.designator, &b.designator));
     for p in &parts {
-        s.push_str(&format!("[\n{}\n{}\n{}\n\n\n\n]\n", p.designator, p.footprint, p.comment));
+        s.push_str(&format!(
+            "[\n{}\n{}\n{}\n\n\n\n]\n",
+            p.designator, p.footprint, p.comment
+        ));
     }
     for n in nets(design) {
         s.push_str(&format!("(\n{}\n", n.name));
@@ -71,7 +82,13 @@ pub fn to_protel(design: &Design) -> String {
 pub fn to_csv(design: &Design) -> String {
     let mut s = String::from("Net,Designator,Pin\n");
     for (d, p, n) in pin_map(design) {
-        let q = |x: &str| if x.contains([',', '"']) { format!("\"{}\"", x.replace('"', "\"\"")) } else { x.to_owned() };
+        let q = |x: &str| {
+            if x.contains([',', '"']) {
+                format!("\"{}\"", x.replace('"', "\"\""))
+            } else {
+                x.to_owned()
+            }
+        };
         s.push_str(&format!("{},{},{}\n", q(&n), q(&d), q(&p)));
     }
     s
@@ -105,7 +122,11 @@ pub fn pins(design: &Design) -> Vec<PinRow> {
             })
         })
         .collect();
-    v.sort_by(|a, b| designator::cmp(&a.designator, &b.designator).then(designator::cmp(&a.pin, &b.pin)).then(a.net.cmp(&b.net)));
+    v.sort_by(|a, b| {
+        designator::cmp(&a.designator, &b.designator)
+            .then(designator::cmp(&a.pin, &b.pin))
+            .then(a.net.cmp(&b.net))
+    });
     v.dedup_by(|a, b| a.node == b.node && a.net == b.net);
     v
 }
@@ -117,11 +138,24 @@ mod tests {
 
     #[test]
     fn exports() {
-        let n = |d: &str, p: &str| Node { designator: d.into(), pin: p.into(), pin_name: String::new() };
+        let n = |d: &str, p: &str| Node {
+            designator: d.into(),
+            pin: p.into(),
+            pin_name: String::new(),
+        };
         let design = Design {
             source: "schematic".into(),
-            parts: vec![Part { designator: "R1".into(), footprint: "0603".into(), comment: "10k".into(), ..Default::default() }],
-            nets: vec![Net { name: "GND".into(), nodes: vec![n("R1", "2"), n("R10", "1"), n("R2", "1")], ..Default::default() }],
+            parts: vec![Part {
+                designator: "R1".into(),
+                footprint: "0603".into(),
+                comment: "10k".into(),
+                ..Default::default()
+            }],
+            nets: vec![Net {
+                name: "GND".into(),
+                nodes: vec![n("R1", "2"), n("R10", "1"), n("R2", "1")],
+                ..Default::default()
+            }],
             ..Default::default()
         };
         assert_eq!(nets(&design)[0].nodes, ["R1.2", "R2.1", "R10.1"]);

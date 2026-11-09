@@ -49,7 +49,11 @@ pub struct Request {
 
 impl Request {
     pub fn new(op: &str) -> Request {
-        Request { op: op.to_owned(), params: IndexMap::new(), answers: vec![] }
+        Request {
+            op: op.to_owned(),
+            params: IndexMap::new(),
+            answers: vec![],
+        }
     }
     pub fn param(mut self, k: &str, v: impl Into<String>) -> Request {
         self.params.insert(k.to_owned(), v.into());
@@ -58,7 +62,10 @@ impl Request {
     /// When a modal dialog whose title contains `title` appears, press the first of `buttons`
     /// it has. For Altium processes that only exist as dialogs (DRC, ECO).
     pub fn answer(mut self, title: &str, buttons: &[&str]) -> Request {
-        self.answers.push((title.to_owned(), buttons.iter().map(|b| (*b).to_owned()).collect()));
+        self.answers.push((
+            title.to_owned(),
+            buttons.iter().map(|b| (*b).to_owned()).collect(),
+        ));
         self
     }
 
@@ -71,7 +78,8 @@ impl Request {
     }
     /// A list as `<k>_count` plus `<k>1..N` (values must be single lines).
     pub fn list(mut self, k: &str, items: &[String]) -> Request {
-        self.params.insert(format!("{k}_count"), items.len().to_string());
+        self.params
+            .insert(format!("{k}_count"), items.len().to_string());
         for (i, v) in items.iter().enumerate() {
             self.params.insert(format!("{k}{}", i + 1), v.clone());
         }
@@ -83,7 +91,9 @@ impl Request {
         let mut s = format!("\u{feff}op={}\r\nprotocol={PROTOCOL}\r\n", self.op);
         for (k, v) in &self.params {
             if v.contains(['\r', '\n']) || k.contains(['=', '\r', '\n']) || k.is_empty() {
-                return Err(Error::usage(format!("parameter {k:?} must be a single line")));
+                return Err(Error::usage(format!(
+                    "parameter {k:?} must be a single line"
+                )));
             }
             s.push_str(&format!("{k}={v}\r\n"));
         }
@@ -107,7 +117,12 @@ fn crlf(s: &str) -> String {
 /// writes for `TEncoding.Unicode`).
 pub fn decode_text(raw: &[u8]) -> String {
     if raw.starts_with(&[0xff, 0xfe]) {
-        let u: Vec<u16> = raw[2..].as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
+        let u: Vec<u16> = raw[2..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
+            .collect();
         return String::from_utf16_lossy(&u);
     }
     let raw = raw.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(raw);
@@ -118,12 +133,20 @@ pub fn decode_text(raw: &[u8]) -> String {
 pub fn parse_response(raw: &[u8], job: &str, log: &[String]) -> Result<Value> {
     let text = decode_text(raw);
     let v: Value = serde_json::from_str(text.trim()).map_err(|e| {
-        Error::new(ErrorCode::DesignerFailed, format!("bridge wrote invalid JSON: {e}"))
-            .details(json!({"response": text.chars().take(2000).collect::<String>(), "job": job}))
+        Error::new(
+            ErrorCode::DesignerFailed,
+            format!("bridge wrote invalid JSON: {e}"),
+        )
+        .details(json!({"response": text.chars().take(2000).collect::<String>(), "job": job}))
     })?;
     if v.get("ok").and_then(Value::as_bool) != Some(true) {
-        let msg = v.get("error").and_then(Value::as_str).unwrap_or("unknown bridge error").to_owned();
-        let mut e = Error::new(ErrorCode::DesignerFailed, msg).details(json!({"job": job, "log": log, "data": v.get("data")}));
+        let msg = v
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown bridge error")
+            .to_owned();
+        let mut e = Error::new(ErrorCode::DesignerFailed, msg)
+            .details(json!({"job": job, "log": log, "data": v.get("data")}));
         if let Some(h) = v.get("hint").and_then(Value::as_str) {
             e = e.hint(h.to_owned());
         }
@@ -163,12 +186,18 @@ impl<'a> Bridge<'a> {
 
     /// The bridge compiled into this binary is installed.
     pub fn installed(&self) -> bool {
-        self.host.exists(&format!(r"{}\Bridge.pas", Self::bridge_dir())).unwrap_or(false)
+        self.host
+            .exists(&format!(r"{}\Bridge.pas", Self::bridge_dir()))
+            .unwrap_or(false)
     }
 
     /// Only an older bridge is installed.
     pub fn outdated(&self) -> bool {
-        !self.installed() && self.host.list(&Self::bridges_root()).is_ok_and(|l| !l.is_empty())
+        !self.installed()
+            && self
+                .host
+                .list(&Self::bridges_root())
+                .is_ok_and(|l| !l.is_empty())
     }
 
     fn marker(&self) -> PathBuf {
@@ -180,7 +209,10 @@ impl<'a> Bridge<'a> {
         let d = Self::bridge_dir();
         let files = vec![
             (format!(r"{d}\Bridge.pas"), crlf(BRIDGE_PAS).into_bytes()),
-            (format!(r"{d}\AltiumCliBridge.PrjScr"), crlf(BRIDGE_PRJ).into_bytes()),
+            (
+                format!(r"{d}\AltiumCliBridge.PrjScr"),
+                crlf(BRIDGE_PRJ).into_bytes(),
+            ),
             (format!(r"{d}\VERSION"), PROTOCOL.as_bytes().to_vec()),
         ];
         self.host.mkdirs(&Self::jobs_dir())?;
@@ -207,7 +239,11 @@ impl<'a> Bridge<'a> {
     }
 
     fn new_job(&self) -> (String, String) {
-        let id = format!("{}-{}", chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"), std::process::id() % 100000);
+        let id = format!(
+            "{}-{}",
+            chrono::Local::now().format("%Y%m%d-%H%M%S-%3f"),
+            std::process::id() % 100000
+        );
         let dir = format!(r"{}\{id}", Self::jobs_dir());
         (id, dir)
     }
@@ -225,11 +261,24 @@ impl<'a> Bridge<'a> {
         let prior = self.host.write_and_launch(
             &[
                 (format!(r"{job}\request.ini"), req.to_ini()?),
-                (format!(r"{}\current.txt", Self::jobs_dir()), format!("{id}\r\n").into_bytes()),
+                (
+                    format!(r"{}\current.txt", Self::jobs_dir()),
+                    format!("{id}\r\n").into_bytes(),
+                ),
             ],
-            &[Self::run_script_arg(&Self::project_path(), "Bridge.pas>Run")],
+            &[Self::run_script_arg(
+                &Self::project_path(),
+                "Bridge.pas>Run",
+            )],
         )?;
-        let mut r = self.wait_done(&id, &job, started, timeout, prior.map(|_| timeout.min(Duration::from_secs(150))), &req.answers);
+        let mut r = self.wait_done(
+            &id,
+            &job,
+            started,
+            timeout,
+            prior.map(|_| timeout.min(Duration::from_secs(150))),
+            &req.answers,
+        );
         if let Err(e) = &r
             && e.code == ErrorCode::Timeout
             && prior.is_none()
@@ -238,8 +287,18 @@ impl<'a> Bridge<'a> {
             // First start: Altium loaded but dropped the -R command it was started with (it
             // was busy signing in / loading extensions). Ask the running instance once more.
             let again = Instant::now();
-            self.host.launch_x2(&[Self::run_script_arg(&Self::project_path(), "Bridge.pas>Run")])?;
-            r = self.wait_done(&id, &job, again, Duration::from_secs(150), Some(Duration::from_secs(90)), &req.answers);
+            self.host.launch_x2(&[Self::run_script_arg(
+                &Self::project_path(),
+                "Bridge.pas>Run",
+            )])?;
+            r = self.wait_done(
+                &id,
+                &job,
+                again,
+                Duration::from_secs(150),
+                Some(Duration::from_secs(90)),
+                &req.answers,
+            );
         }
         r
     }
@@ -248,14 +307,27 @@ impl<'a> Bridge<'a> {
     /// `proc_name` and then signals completion. The script can call `AltiumCliJobDir` (defined
     /// by the wrapper) and write `AltiumCliJobDir + 'user.json'`; that JSON becomes the
     /// response data.
-    pub fn run_user_script(&self, script: &Path, proc_name: &str, timeout: Duration) -> Result<Response> {
+    pub fn run_user_script(
+        &self,
+        script: &Path,
+        proc_name: &str,
+        timeout: Duration,
+    ) -> Result<Response> {
         let src = std::fs::read(script)?;
-        if proc_name.is_empty() || !proc_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-            return Err(Error::usage(format!("invalid procedure name {proc_name:?}")));
+        if proc_name.is_empty()
+            || !proc_name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            return Err(Error::usage(format!(
+                "invalid procedure name {proc_name:?}"
+            )));
         }
         let _lock = JobLock::acquire()?;
         let (id, job) = self.new_job();
-        let wrap = WRAP_PAS.replace("{{JOB}}", &format!(r"{job}\")).replace("{{PROC}}", proc_name);
+        let wrap = WRAP_PAS
+            .replace("{{JOB}}", &format!(r"{job}\"))
+            .replace("{{PROC}}", proc_name);
         let started = Instant::now();
         let prior = self.host.write_and_launch(
             &[
@@ -263,9 +335,19 @@ impl<'a> Bridge<'a> {
                 (format!(r"{job}\Wrap.pas"), crlf(&wrap).into_bytes()),
                 (format!(r"{job}\Job.PrjScr"), crlf(USER_PRJ).into_bytes()),
             ],
-            &[Self::run_script_arg(&format!(r"{job}\Job.PrjScr"), "Wrap.pas>Run")],
+            &[Self::run_script_arg(
+                &format!(r"{job}\Job.PrjScr"),
+                "Wrap.pas>Run",
+            )],
         )?;
-        let mut resp = self.wait_done(&id, &job, started, timeout, prior.map(|_| timeout.min(Duration::from_secs(150))), &[])?;
+        let mut resp = self.wait_done(
+            &id,
+            &job,
+            started,
+            timeout,
+            prior.map(|_| timeout.min(Duration::from_secs(150))),
+            &[],
+        )?;
         if let Some(b) = self.host.read(&format!(r"{job}\user.json"))? {
             let t = decode_text(&b);
             resp.data = serde_json::from_str(t.trim()).unwrap_or(Value::String(t));
@@ -278,7 +360,10 @@ impl<'a> Bridge<'a> {
         let png = self.host.screenshot().ok()?;
         let dir = crate::config::state_dir();
         std::fs::create_dir_all(&dir).ok()?;
-        let p = dir.join(format!("designer-{}.png", chrono::Local::now().format("%Y%m%d-%H%M%S")));
+        let p = dir.join(format!(
+            "designer-{}.png",
+            chrono::Local::now().format("%Y%m%d-%H%M%S")
+        ));
         std::fs::write(&p, png).ok()?;
         Some(p.display().to_string())
     }
@@ -299,42 +384,84 @@ impl<'a> Bridge<'a> {
     /// Polls for `done`. Fails early when Altium is stuck on a modal dialog: checked whenever
     /// the job log has not moved for a while (`grace` covers a script that never started in an
     /// Altium that was already running).
-    fn wait_done(&self, id: &str, job: &str, started: Instant, timeout: Duration, grace: Option<Duration>, answers: &[(String, Vec<String>)]) -> Result<Response> {
-        let poll = if self.host.kind() == "ssh" { Duration::from_millis(500) } else { Duration::from_millis(200) };
-        let files = [format!(r"{job}\done"), format!(r"{job}\response.json"), format!(r"{job}\log.txt")];
+    fn wait_done(
+        &self,
+        id: &str,
+        job: &str,
+        started: Instant,
+        timeout: Duration,
+        grace: Option<Duration>,
+        answers: &[(String, Vec<String>)],
+    ) -> Result<Response> {
+        let poll = if self.host.kind() == "ssh" {
+            Duration::from_millis(500)
+        } else {
+            Duration::from_millis(200)
+        };
+        let files = [
+            format!(r"{job}\done"),
+            format!(r"{job}\response.json"),
+            format!(r"{job}\log.txt"),
+        ];
         let mut log_seen = false;
         // The job's own files on the host: proof the script ran even if a read came back empty.
         let mut job_files_seen = false;
-        let (mut last_len, mut last_change, mut last_check) = (0usize, Instant::now(), Instant::now());
+        let (mut last_len, mut last_change, mut last_check) =
+            (0usize, Instant::now(), Instant::now());
         let mut can_check = self.host.kind() != "wine";
-        let (quiet_for, every) = if answers.is_empty() { (Duration::from_secs(20), Duration::from_secs(25)) } else { (Duration::from_secs(2), Duration::from_secs(4)) };
+        let (quiet_for, every) = if answers.is_empty() {
+            (Duration::from_secs(20), Duration::from_secs(25))
+        } else {
+            (Duration::from_secs(2), Duration::from_secs(4))
+        };
         let mut answered: Vec<String> = vec![];
         loop {
             let got = self.host.read_many(&files)?;
-            let log: Vec<String> = got[2].as_deref().map(|b| decode_text(b).lines().map(str::to_owned).collect()).unwrap_or_default();
+            let log: Vec<String> = got[2]
+                .as_deref()
+                .map(|b| decode_text(b).lines().map(str::to_owned).collect())
+                .unwrap_or_default();
             log_seen |= got[2].is_some();
             if got[0].is_some() {
-                let raw = got[1].clone().ok_or_else(|| Error::new(ErrorCode::DesignerFailed, "bridge finished without a response"))?;
+                let raw = got[1].clone().ok_or_else(|| {
+                    Error::new(
+                        ErrorCode::DesignerFailed,
+                        "bridge finished without a response",
+                    )
+                })?;
                 let mut data = parse_response(&raw, job, &log)?;
                 if !answered.is_empty()
                     && let Value::Object(o) = &mut data
                 {
                     o.insert("_answered".into(), json!(answered));
                 }
-                return Ok(Response { job: id.to_owned(), data, log, elapsed_ms: started.elapsed().as_millis() as u64 });
+                return Ok(Response {
+                    job: id.to_owned(),
+                    data,
+                    log,
+                    elapsed_ms: started.elapsed().as_millis() as u64,
+                });
             }
             if log.len() != last_len {
                 last_len = log.len();
                 last_change = Instant::now();
             }
             let quiet = last_change.elapsed();
-            let stalled = if log_seen { quiet > quiet_for } else { grace.is_some_and(|g| started.elapsed() > g.min(Duration::from_secs(30))) };
+            let stalled = if log_seen {
+                quiet > quiet_for
+            } else {
+                grace.is_some_and(|g| started.elapsed() > g.min(Duration::from_secs(30)))
+            };
             if can_check && stalled && last_check.elapsed() > every {
                 last_check = Instant::now();
                 match crate::dialogs::list(self.host) {
                     Ok(rep) if rep.blocked => {
                         let modal = rep.modal();
-                        let expected = answers.iter().find(|(t, _)| modal.iter().any(|w| w.title.contains(t.as_str()) && !w.launcher));
+                        let expected = answers.iter().find(|(t, _)| {
+                            modal
+                                .iter()
+                                .any(|w| w.title.contains(t.as_str()) && !w.launcher)
+                        });
                         if let Some((title, buttons)) = expected {
                             let b: Vec<&str> = buttons.iter().map(String::as_str).collect();
                             if let Ok(r) = crate::dialogs::close(self.host, &b)
@@ -358,12 +485,14 @@ impl<'a> Bridge<'a> {
                 // A busy host can answer one poll with nothing while the job itself ran fine: ask
                 // the host directly before blaming Altium for not starting the script.
                 if !job_files_seen {
-                    let probe = |path: &str| self.host.exists(path).map_err(|mut e| {
+                    let probe = |path: &str| {
+                        self.host.exists(path).map_err(|mut e| {
                         e.message = format!("cannot poll bridge job {id} at {path}: {}", e.message);
                         let hint = "check host connectivity and permissions on the bridge job directory; the job may still be running, so inspect `ace designer status` and `ace designer screenshot` before retrying";
                         e.hint = Some(match e.hint { Some(prior) => format!("{prior}; {hint}"), None => hint.to_owned() });
                         e
-                    });
+                    })
+                    };
                     job_files_seen = probe(&files[2])? || probe(&files[0])?;
                 }
                 if !job_files_seen {
@@ -401,15 +530,23 @@ impl JobLock {
     fn acquire_in(dir: &Path) -> Result<JobLock> {
         std::fs::create_dir_all(dir)?;
         let path = dir.join("designer.lock");
-        let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path)?;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)?;
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             match file.try_lock() {
                 Ok(()) => return Ok(JobLock { _file: file }),
                 Err(std::fs::TryLockError::WouldBlock) => {
                     if Instant::now() > deadline {
-                        return Err(Error::new(ErrorCode::Timeout, "another altium-cli-extended process is talking to Altium")
-                            .hint("designer commands run one at a time; wait and retry"));
+                        return Err(Error::new(
+                            ErrorCode::Timeout,
+                            "another altium-cli-extended process is talking to Altium",
+                        )
+                        .hint("designer commands run one at a time; wait and retry"));
                     }
                     std::thread::sleep(Duration::from_millis(200));
                 }
@@ -419,7 +556,8 @@ impl JobLock {
     }
 }
 
-const WRAP_PAS: &str = "{ altium-cli-extended wrapper: runs the user procedure, then signals completion. }
+const WRAP_PAS: &str =
+    "{ altium-cli-extended wrapper: runs the user procedure, then signals completion. }
 Function AltiumCliJobDir : String;
 Begin
   Result := '{{JOB}}';
@@ -514,9 +652,15 @@ mod tests {
     fn pascal_comments_do_not_nest() {
         assert_eq!(nested_brace_comment("{ a {\"ok\":false} b }"), Some(1));
         assert_eq!(nested_brace_comment("S := '{\"ok\":true}'; { fine }"), None);
-        let wrap = WRAP_PAS.replace("{{JOB}}", r"C:\j\").replace("{{PROC}}", "Main");
+        let wrap = WRAP_PAS
+            .replace("{{JOB}}", r"C:\j\")
+            .replace("{{PROC}}", "Main");
         for (name, src) in [("Bridge.pas", BRIDGE_PAS), ("Wrap.pas", wrap.as_str())] {
-            assert_eq!(nested_brace_comment(src), None, "{name}: a brace inside a brace comment ends it early");
+            assert_eq!(
+                nested_brace_comment(src),
+                None,
+                "{name}: a brace inside a brace comment ends it early"
+            );
         }
     }
 
@@ -525,33 +669,89 @@ mod tests {
     }
 
     impl Host for PollHost {
-        fn kind(&self) -> &'static str { "mock" }
-        fn describe(&self) -> Value { json!({}) }
-        fn altium_dir(&self) -> &str { "" }
-        fn read(&self, _: &str) -> Result<Option<Vec<u8>>> { Ok(None) }
-        fn exists(&self, _: &str) -> Result<bool> { self.probes.borrow_mut().pop_front().expect("unexpected probe") }
-        fn write(&self, _: &str, _: &[u8]) -> Result<()> { unreachable!() }
-        fn mkdirs(&self, _: &str) -> Result<()> { unreachable!() }
-        fn remove(&self, _: &str) -> Result<()> { unreachable!() }
-        fn list(&self, _: &str) -> Result<Vec<String>> { unreachable!() }
-        fn launch_x2(&self, _: &[String]) -> Result<Option<u32>> { unreachable!() }
-        fn altium_pid(&self) -> Result<Option<u32>> { unreachable!() }
-        fn kill_altium(&self) -> Result<usize> { unreachable!() }
-        fn clock(&self) -> Result<String> { unreachable!() }
-        fn stage_in(&self, _: &crate::ops::StageSet, _: &Path) -> Result<crate::host::Staged> { unreachable!() }
-        fn stage_out(&self, _: &crate::host::Staged, _: &str, _: altium_format::fsx::WriteOpts) -> Result<(Vec<PathBuf>, String)> { unreachable!() }
+        fn kind(&self) -> &'static str {
+            "mock"
+        }
+        fn describe(&self) -> Value {
+            json!({})
+        }
+        fn altium_dir(&self) -> &str {
+            ""
+        }
+        fn read(&self, _: &str) -> Result<Option<Vec<u8>>> {
+            Ok(None)
+        }
+        fn exists(&self, _: &str) -> Result<bool> {
+            self.probes
+                .borrow_mut()
+                .pop_front()
+                .expect("unexpected probe")
+        }
+        fn write(&self, _: &str, _: &[u8]) -> Result<()> {
+            unreachable!()
+        }
+        fn mkdirs(&self, _: &str) -> Result<()> {
+            unreachable!()
+        }
+        fn remove(&self, _: &str) -> Result<()> {
+            unreachable!()
+        }
+        fn list(&self, _: &str) -> Result<Vec<String>> {
+            unreachable!()
+        }
+        fn launch_x2(&self, _: &[String]) -> Result<Option<u32>> {
+            unreachable!()
+        }
+        fn altium_pid(&self) -> Result<Option<u32>> {
+            unreachable!()
+        }
+        fn kill_altium(&self) -> Result<usize> {
+            unreachable!()
+        }
+        fn clock(&self) -> Result<String> {
+            unreachable!()
+        }
+        fn stage_in(&self, _: &crate::ops::StageSet, _: &Path) -> Result<crate::host::Staged> {
+            unreachable!()
+        }
+        fn stage_out(
+            &self,
+            _: &crate::host::Staged,
+            _: &str,
+            _: altium_format::fsx::WriteOpts,
+        ) -> Result<(Vec<PathBuf>, String)> {
+            unreachable!()
+        }
     }
 
     #[test]
     fn poll_probe_errors_surface_with_recovery_hint() {
         for prefix in [vec![], vec![Ok(false)]] {
             let mut probes = prefix;
-            probes.push(Err(Error::new(ErrorCode::Io, "permission denied").details(json!({"source": "mock"}))));
-            let host = PollHost { probes: std::cell::RefCell::new(probes.into()) };
-            let e = Bridge::new(&host).wait_done("id", "job", Instant::now() - Duration::from_millis(1), Duration::from_secs(60), Some(Duration::ZERO), &[]).unwrap_err();
+            probes
+                .push(Err(Error::new(ErrorCode::Io, "permission denied")
+                    .details(json!({"source": "mock"}))));
+            let host = PollHost {
+                probes: std::cell::RefCell::new(probes.into()),
+            };
+            let e = Bridge::new(&host)
+                .wait_done(
+                    "id",
+                    "job",
+                    Instant::now() - Duration::from_millis(1),
+                    Duration::from_secs(60),
+                    Some(Duration::ZERO),
+                    &[],
+                )
+                .unwrap_err();
             assert_eq!(e.code, ErrorCode::Io);
             assert!(e.message.contains("permission denied"));
-            assert!(e.hint.as_deref().is_some_and(|h| h.contains("permissions") && h.contains("job may still be running")), "{e}");
+            assert!(
+                e.hint.as_deref().is_some_and(
+                    |h| h.contains("permissions") && h.contains("job may still be running")
+                ),
+                "{e}"
+            );
             assert_eq!(e.details.as_deref().unwrap()["source"], "mock");
             assert!(host.probes.borrow().is_empty());
         }
@@ -559,29 +759,65 @@ mod tests {
 
     #[test]
     fn absent_job_files_still_report_not_started() {
-        let host = PollHost { probes: std::cell::RefCell::new([Ok(false), Ok(false)].into()) };
-        let e = Bridge::new(&host).wait_done("id", "job", Instant::now() - Duration::from_millis(1), Duration::from_secs(60), Some(Duration::ZERO), &[]).unwrap_err();
+        let host = PollHost {
+            probes: std::cell::RefCell::new([Ok(false), Ok(false)].into()),
+        };
+        let e = Bridge::new(&host)
+            .wait_done(
+                "id",
+                "job",
+                Instant::now() - Duration::from_millis(1),
+                Duration::from_secs(60),
+                Some(Duration::ZERO),
+                &[],
+            )
+            .unwrap_err();
         assert_eq!(e.code, ErrorCode::Timeout);
         assert!(e.message.contains("did not start"));
     }
 
     #[test]
     fn request_ini() {
-        let r = Request::new("pcb_move").param("pcb", r"C:\w\Ä.PcbDoc").list("d", &["U1".into(), "R2".into()]);
+        let r = Request::new("pcb_move")
+            .param("pcb", r"C:\w\Ä.PcbDoc")
+            .list("d", &["U1".into(), "R2".into()]);
         let b = r.to_ini().unwrap();
         assert!(b.starts_with(&[0xef, 0xbb, 0xbf]));
         let t = String::from_utf8(b[3..].to_vec()).unwrap();
-        assert_eq!(t, "op=pcb_move\r\nprotocol=2\r\npcb=C:\\w\\Ä.PcbDoc\r\nd_count=2\r\nd1=U1\r\nd2=R2\r\n");
+        assert_eq!(
+            t,
+            "op=pcb_move\r\nprotocol=2\r\npcb=C:\\w\\Ä.PcbDoc\r\nd_count=2\r\nd1=U1\r\nd2=R2\r\n"
+        );
         assert!(Request::new("x").param("a", "b\nc").to_ini().is_err());
         assert!(Request::new("x").param("a=b", "c").to_ini().is_err());
     }
 
     #[test]
     fn responses() {
-        assert_eq!(parse_response(b"\xef\xbb\xbf{\"ok\":true,\"data\":{\"a\":\"\\u00c4\"}}\r\n", "j", &[]).unwrap(), json!({"a": "Ä"}));
-        let utf16: Vec<u8> = [0xff, 0xfe].into_iter().chain("{\"ok\":true,\"data\":1}".encode_utf16().flat_map(|u| u.to_le_bytes())).collect();
+        assert_eq!(
+            parse_response(
+                b"\xef\xbb\xbf{\"ok\":true,\"data\":{\"a\":\"\\u00c4\"}}\r\n",
+                "j",
+                &[]
+            )
+            .unwrap(),
+            json!({"a": "Ä"})
+        );
+        let utf16: Vec<u8> = [0xff, 0xfe]
+            .into_iter()
+            .chain(
+                "{\"ok\":true,\"data\":1}"
+                    .encode_utf16()
+                    .flat_map(|u| u.to_le_bytes()),
+            )
+            .collect();
         assert_eq!(parse_response(&utf16, "j", &[]).unwrap(), json!(1));
-        let e = parse_response(b"{\"ok\":false,\"error\":\"boom\",\"hint\":\"do x\",\"data\":{}}", "j", &[]).unwrap_err();
+        let e = parse_response(
+            b"{\"ok\":false,\"error\":\"boom\",\"hint\":\"do x\",\"data\":{}}",
+            "j",
+            &[],
+        )
+        .unwrap_err();
         assert_eq!(e.code, ErrorCode::DesignerFailed);
         assert_eq!(e.message, "boom");
         assert!(parse_response(b"{not json", "j", &[]).is_err());
@@ -591,8 +827,14 @@ mod tests {
     fn job_lock_is_exclusive() {
         let dir = std::env::temp_dir().join(format!("ace-job-lock-test-{}", std::process::id()));
         let a = JobLock::acquire_in(&dir).unwrap();
-        let f = std::fs::OpenOptions::new().write(true).open(dir.join("designer.lock")).unwrap();
-        assert!(matches!(f.try_lock(), Err(std::fs::TryLockError::WouldBlock)));
+        let f = std::fs::OpenOptions::new()
+            .write(true)
+            .open(dir.join("designer.lock"))
+            .unwrap();
+        assert!(matches!(
+            f.try_lock(),
+            Err(std::fs::TryLockError::WouldBlock)
+        ));
         drop(a);
         assert!(f.try_lock().is_ok());
         drop(f);
@@ -602,6 +844,10 @@ mod tests {
     #[test]
     fn bridge_dir_tracks_sources() {
         let d = Bridge::bridge_dir();
-        assert!(d.starts_with(r"C:\altium-cli-extended\bridge\") && d.len() == r"C:\altium-cli-extended\bridge\".len() + 12, "{d}");
+        assert!(
+            d.starts_with(r"C:\altium-cli-extended\bridge\")
+                && d.len() == r"C:\altium-cli-extended\bridge\".len() + 12,
+            "{d}"
+        );
     }
 }

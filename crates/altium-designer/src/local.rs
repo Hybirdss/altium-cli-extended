@@ -26,7 +26,10 @@ pub fn find_x2(cfg: &Config) -> Option<PathBuf> {
     if let Some(p) = cfg.altium_exe.clone().filter(|p| p.is_file()) {
         return Some(p);
     }
-    if let Some(p) = std::env::var_os("ACE_X2").map(PathBuf::from).filter(|p| p.is_file()) {
+    if let Some(p) = std::env::var_os("ACE_X2")
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
+    {
         return Some(p);
     }
     let mut roots = vec![];
@@ -56,17 +59,32 @@ impl LocalHost {
             Error::new(ErrorCode::DesignerUnavailable, "Altium Designer (X2.EXE) not found")
                 .hint("install Altium Designer, or set its path: `ace designer config --set altium_exe=C:\\\\...\\\\X2.EXE`")
         })?;
-        let altium_dir = x2.parent().map(|p| p.display().to_string()).unwrap_or_default();
-        Ok(LocalHost { x2, altium_dir, runner_current: Cell::new(None) })
+        let altium_dir = x2
+            .parent()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        Ok(LocalHost {
+            x2,
+            altium_dir,
+            runner_current: Cell::new(None),
+        })
     }
 
     /// Install the same interactive runner used by the SSH host.
     pub fn install_runner(&self) -> Result<()> {
         self.security_ps(crate::security::LOCK_ROOT)?;
         self.mkdirs(&format!(r"{ROOT}\run"))?;
-        self.write(&format!(r"{ROOT}\run.cmd"), crate::ssh::RUNNER_CMD.as_bytes())?;
+        self.write(
+            &format!(r"{ROOT}\run.cmd"),
+            crate::ssh::RUNNER_CMD.as_bytes(),
+        )?;
         let out = Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", crate::ssh::REGISTER_RUNNER_PS1])
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                crate::ssh::REGISTER_RUNNER_PS1,
+            ])
             .output()?;
         if !out.status.success() {
             return Err(Error::new(ErrorCode::DesignerUnavailable, "cannot register the interactive runner")
@@ -78,10 +96,18 @@ impl LocalHost {
     }
 
     pub fn runner_installed(&self) -> bool {
-        if let Some(current) = self.runner_current.get() { return current; }
-        let current = Command::new("schtasks").args(["/query", "/tn", "altium-cli-extended-run", "/xml"])
-            .output().is_ok_and(|o| o.status.success() && crate::ssh::runner_xml_current(&String::from_utf8_lossy(&o.stdout)))
-            && std::fs::read(format!(r"{ROOT}\run.cmd")).is_ok_and(|b| b == crate::ssh::RUNNER_CMD.as_bytes());
+        if let Some(current) = self.runner_current.get() {
+            return current;
+        }
+        let current = Command::new("schtasks")
+            .args(["/query", "/tn", "altium-cli-extended-run", "/xml"])
+            .output()
+            .is_ok_and(|o| {
+                o.status.success()
+                    && crate::ssh::runner_xml_current(&String::from_utf8_lossy(&o.stdout))
+            })
+            && std::fs::read(format!(r"{ROOT}\run.cmd"))
+                .is_ok_and(|b| b == crate::ssh::RUNNER_CMD.as_bytes());
         self.runner_current.set(Some(current));
         current
     }
@@ -95,12 +121,17 @@ impl LocalHost {
         }
         let path = format!(r"{ROOT}\run\{}.cmd", unique_id());
         self.write(&path, format!("@echo off\r\n{body}\r\n").as_bytes())?;
-        let out = Command::new("schtasks").args(["/run", "/tn", "altium-cli-extended-run"]).output()?;
+        let out = Command::new("schtasks")
+            .args(["/run", "/tn", "altium-cli-extended-run"])
+            .output()?;
         if !out.status.success() {
             self.remove(&path)?;
-            return Err(Error::new(ErrorCode::DesignerUnavailable, "cannot start the interactive runner")
-                .details(json!({"stderr": String::from_utf8_lossy(&out.stderr)}))
-                .hint("log in to the Windows desktop and run `ace designer setup --apply runner`"));
+            return Err(Error::new(
+                ErrorCode::DesignerUnavailable,
+                "cannot start the interactive runner",
+            )
+            .details(json!({"stderr": String::from_utf8_lossy(&out.stderr)}))
+            .hint("log in to the Windows desktop and run `ace designer setup --apply runner`"));
         }
         Ok(())
     }
@@ -110,18 +141,25 @@ impl LocalHost {
     }
 
     fn security_ps(&self, script: &str) -> Result<String> {
-        let out = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", script]).output()?;
+        let out = Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
+            .output()?;
         if !out.status.success() {
-            return Err(Error::new(ErrorCode::Unsafe, "cannot secure or inspect desktop runner permissions")
-                .details(json!({"stderr": String::from_utf8_lossy(&out.stderr)}))
-                .hint("run `ace designer setup --apply runner` as the Windows desktop user"));
+            return Err(Error::new(
+                ErrorCode::Unsafe,
+                "cannot secure or inspect desktop runner permissions",
+            )
+            .details(json!({"stderr": String::from_utf8_lossy(&out.stderr)}))
+            .hint("run `ace designer setup --apply runner` as the Windows desktop user"));
         }
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     }
 }
 
 fn changed_since(dir: &Path, t: SystemTime, depth: usize, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.flatten() {
         let p = e.path();
         let Ok(md) = e.metadata() else { continue };
@@ -207,28 +245,43 @@ impl Host for LocalHost {
     }
 
     fn altium_pid(&self) -> Result<Option<u32>> {
-        let out = Command::new("tasklist").args(["/FI", "IMAGENAME eq X2.EXE", "/FO", "CSV", "/NH"]).output()?;
+        let out = Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq X2.EXE", "/FO", "CSV", "/NH"])
+            .output()?;
         let text = String::from_utf8_lossy(&out.stdout);
         Ok(text
             .lines()
             .filter(|l| l.to_ascii_uppercase().starts_with("\"X2.EXE\""))
-            .find_map(|l| l.split(',').nth(1).and_then(|p| p.trim_matches('"').parse().ok())))
+            .find_map(|l| {
+                l.split(',')
+                    .nth(1)
+                    .and_then(|p| p.trim_matches('"').parse().ok())
+            }))
     }
 
     fn kill_altium(&self) -> Result<usize> {
         let n = usize::from(self.altium_pid()?.is_some());
-        let _ = Command::new("taskkill").args(["/IM", "X2.EXE", "/F"]).output()?;
+        let _ = Command::new("taskkill")
+            .args(["/IM", "X2.EXE", "/F"])
+            .output()?;
         Ok(n)
     }
 
     fn clock(&self) -> Result<String> {
-        Ok(SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0).to_string())
+        Ok(SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+            .to_string())
     }
 
     fn stage_in(&self, set: &crate::ops::StageSet, file: &Path) -> Result<Staged> {
         let abs = std::path::absolute(file)?;
         if !abs.exists() {
-            return Err(Error::new(ErrorCode::FileNotFound, format!("{} does not exist", abs.display())));
+            return Err(Error::new(
+                ErrorCode::FileNotFound,
+                format!("{} does not exist", abs.display()),
+            ));
         }
         let root = std::path::absolute(&set.root)?;
         Ok(Staged {
@@ -240,7 +293,12 @@ impl Host for LocalHost {
         })
     }
 
-    fn stage_out(&self, staged: &Staged, since: &str, _opts: altium_format::fsx::WriteOpts) -> Result<(Vec<PathBuf>, String)> {
+    fn stage_out(
+        &self,
+        staged: &Staged,
+        since: &str,
+        _opts: altium_format::fsx::WriteOpts,
+    ) -> Result<(Vec<PathBuf>, String)> {
         let t = UNIX_EPOCH + Duration::from_millis(since.parse().unwrap_or(0));
         let mut out = vec![];
         changed_since(&staged.local_root, t, 8, &mut out);
@@ -255,19 +313,28 @@ impl Host for LocalHost {
         let ps1 = dir.join(format!("{id}.ps1"));
         let out = dir.join(format!("{id}.out"));
         let err = dir.join(format!("{id}.err"));
-        let body = format!("try {{\r\n{}\r\n}} catch {{ [IO.File]::WriteAllText({}, $_.ToString()) }}",
-            ps_with_out(script, &out.display().to_string()), crate::ssh::psq(&err.display().to_string()));
+        let body = format!(
+            "try {{\r\n{}\r\n}} catch {{ [IO.File]::WriteAllText({}, $_.ToString()) }}",
+            ps_with_out(script, &out.display().to_string()),
+            crate::ssh::psq(&err.display().to_string())
+        );
         std::fs::write(&ps1, format!("\u{feff}{body}"))?;
-        self.run_interactive(&format!("powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{}\"", ps1.display()))?;
+        self.run_interactive(&format!(
+            "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{}\"",
+            ps1.display()
+        ))?;
         let started = Instant::now();
         let result = loop {
             if let Ok(data) = std::fs::read(&out) {
                 break Ok(data);
             }
             if let Ok(message) = std::fs::read_to_string(&err) {
-                break Err(Error::new(ErrorCode::DesignerFailed, "desktop PowerShell helper failed")
-                    .details(json!({"stderr": message}))
-                    .hint("check the desktop session and the helper error"));
+                break Err(Error::new(
+                    ErrorCode::DesignerFailed,
+                    "desktop PowerShell helper failed",
+                )
+                .details(json!({"stderr": message}))
+                .hint("check the desktop session and the helper error"));
             }
             if started.elapsed() >= timeout {
                 break Err(Error::new(ErrorCode::Timeout, format!("no result from the desktop session after {}s", timeout.as_secs()))
@@ -286,7 +353,14 @@ impl Host for LocalHost {
 }
 
 fn unique_id() -> String {
-    format!("{}-{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0))
+    format!(
+        "{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    )
 }
 
 #[cfg(test)]
@@ -296,7 +370,11 @@ mod tests {
     #[test]
     fn runner_check_reuses_the_host_lifetime_cache() {
         for current in [true, false] {
-            let host = LocalHost { x2: PathBuf::new(), altium_dir: String::new(), runner_current: Cell::new(Some(current)) };
+            let host = LocalHost {
+                x2: PathBuf::new(),
+                altium_dir: String::new(),
+                runner_current: Cell::new(Some(current)),
+            };
             // This also runs on Linux without schtasks: a cached result needs no process.
             assert_eq!(host.runner_installed(), current);
             assert_eq!(host.runner_installed(), current);

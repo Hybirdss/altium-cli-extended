@@ -56,7 +56,13 @@ fn point(b: &mut Bin) -> Result<Point> {
 
 /// UTF-16LE fixed-size buffer up to the first NUL.
 fn utf16z(raw: &[u8]) -> String {
-    let units: Vec<u16> = raw.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes([c[0], c[1]])).take_while(|&u| u != 0).collect();
+    let units: Vec<u16> = raw
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .take_while(|&u| u != 0)
+        .collect();
     String::from_utf16_lossy(&units)
 }
 
@@ -96,11 +102,17 @@ impl Head {
 
 /// Decode the keepout restriction bit mask (tracks, arcs, fills, regions).
 pub fn keepout_names(mask: u8) -> Vec<&'static str> {
-    [(0x01, "via"), (0x02, "track"), (0x04, "copper"), (0x08, "smd_pad"), (0x10, "th_pad")]
-        .iter()
-        .filter(|(b, _)| mask & b != 0)
-        .map(|(_, n)| *n)
-        .collect()
+    [
+        (0x01, "via"),
+        (0x02, "track"),
+        (0x04, "copper"),
+        (0x08, "smd_pad"),
+        (0x10, "th_pad"),
+    ]
+    .iter()
+    .filter(|(b, _)| mask & b != 0)
+    .map(|(_, n)| *n)
+    .collect()
 }
 
 /// References every primitive carries: net and owning component, by index and (once the
@@ -126,7 +138,11 @@ pub struct Owner {
 
 impl Owner {
     fn new(net: u16, component: u16) -> Owner {
-        Owner { net_index: opt16(net), component_index: opt16(component), ..Default::default() }
+        Owner {
+            net_index: opt16(net),
+            component_index: opt16(component),
+            ..Default::default()
+        }
     }
 }
 
@@ -193,7 +209,13 @@ pub fn parse_arc(b: &mut Bin, index: usize) -> Result<Arc> {
         union_index = Some(s.u32()?);
         v7 = Some(s.u32()?);
     }
-    let kr = if rem >= 10 { s.u8()? } else if h.keepout() { 0x1F } else { 0 };
+    let kr = if rem >= 10 {
+        s.u8()?
+    } else if h.keepout() {
+        0x1F
+    } else {
+        0
+    };
     let sweep = ccw_sweep(start_angle, end_angle);
     Ok(Arc {
         index,
@@ -209,7 +231,11 @@ pub fn parse_arc(b: &mut Bin, index: usize) -> Result<Arc> {
         length: Coord((radius.0 as f64 * sweep.to_radians()).round() as i64),
         locked: h.locked(),
         keepout: h.keepout(),
-        keepout_restrictions: if h.keepout() { keepout_names(kr) } else { vec![] },
+        keepout_restrictions: if h.keepout() {
+            keepout_names(kr)
+        } else {
+            vec![]
+        },
         polygon: opt16(h.polygon),
         polygon_outline: h.flags1 & 0x02 != 0,
         union_index: union_index.filter(|&u| u != 0),
@@ -256,7 +282,13 @@ pub fn parse_track(b: &mut Bin, index: usize) -> Result<Track> {
         s.skip(1)?;
         v7 = Some(s.u32()?);
     }
-    let kr = if rem >= 10 { s.u8()? } else if h.keepout() { 0x1F } else { 0 };
+    let kr = if rem >= 10 {
+        s.u8()?
+    } else if h.keepout() {
+        0x1F
+    } else {
+        0
+    };
     let dx = (end.x.0 - start.x.0) as f64;
     let dy = (end.y.0 - start.y.0) as f64;
     Ok(Track {
@@ -269,7 +301,11 @@ pub fn parse_track(b: &mut Bin, index: usize) -> Result<Track> {
         length: Coord((dx * dx + dy * dy).sqrt().round() as i64),
         locked: h.locked(),
         keepout: h.keepout(),
-        keepout_restrictions: if h.keepout() { keepout_names(kr) } else { vec![] },
+        keepout_restrictions: if h.keepout() {
+            keepout_names(kr)
+        } else {
+            vec![]
+        },
         polygon: opt16(h.polygon),
         polygon_outline: h.flags1 & 0x02 != 0,
         union_index: union_index.filter(|&u| u != 0),
@@ -308,7 +344,13 @@ pub fn parse_fill(b: &mut Bin, index: usize) -> Result<Fill> {
         s.skip(5)?;
         v7 = Some(s.u32()?);
     }
-    let kr = if rem >= 10 { s.u8()? } else if h.keepout() { 0x1F } else { 0 };
+    let kr = if rem >= 10 {
+        s.u8()?
+    } else if h.keepout() {
+        0x1F
+    } else {
+        0
+    };
     Ok(Fill {
         index,
         layer: Layer::versioned(h.layer, v7),
@@ -318,7 +360,11 @@ pub fn parse_fill(b: &mut Bin, index: usize) -> Result<Fill> {
         rotation,
         locked: h.locked(),
         keepout: h.keepout(),
-        keepout_restrictions: if h.keepout() { keepout_names(kr) } else { vec![] },
+        keepout_restrictions: if h.keepout() {
+            keepout_names(kr)
+        } else {
+            vec![]
+        },
     })
 }
 
@@ -430,7 +476,11 @@ pub fn parse_via(b: &mut Bin, index: usize) -> Result<Via> {
     let conductors = s.u8()?;
     s.skip(1)?;
     let conductor_width = coord(&mut s)?;
-    v.thermal_relief = Some(ThermalRelief { air_gap, conductors, conductor_width });
+    v.thermal_relief = Some(ThermalRelief {
+        air_gap,
+        conductors,
+        conductor_width,
+    });
     s.skip(8)?;
     s.skip(4)?;
     let front = coord(&mut s)?;
@@ -446,12 +496,28 @@ pub fn parse_via(b: &mut Bin, index: usize) -> Result<Via> {
     }
     if mode == 1 {
         v.diameters = vec![
-            LayerSize { layer: Layer::TOP, diameter: dia[0] },
-            LayerSize { layer: Layer::mid(1), diameter: dia[1] },
-            LayerSize { layer: Layer::BOTTOM, diameter: dia[31] },
+            LayerSize {
+                layer: Layer::TOP,
+                diameter: dia[0],
+            },
+            LayerSize {
+                layer: Layer::mid(1),
+                diameter: dia[1],
+            },
+            LayerSize {
+                layer: Layer::BOTTOM,
+                diameter: dia[31],
+            },
         ];
     } else if mode == 2 {
-        v.diameters = dia.iter().enumerate().map(|(i, &d)| LayerSize { layer: stack_layer(i), diameter: d }).collect();
+        v.diameters = dia
+            .iter()
+            .enumerate()
+            .map(|(i, &d)| LayerSize {
+                layer: stack_layer(i),
+                diameter: d,
+            })
+            .collect();
     }
     let mut back = front;
     if len >= 246 {
@@ -463,7 +529,11 @@ pub fn parse_via(b: &mut Bin, index: usize) -> Result<Via> {
         }
     }
     if manual {
-        v.solder_mask_expansion = Some(ViaMask { front, back, from_hole });
+        v.solder_mask_expansion = Some(ViaMask {
+            front,
+            back,
+            from_hole,
+        });
     }
     Ok(v)
 }
@@ -551,7 +621,10 @@ fn mask(mode: u8, value: Coord) -> MaskExpansion {
         2 => "manual",
         _ => "unknown",
     };
-    MaskExpansion { mode: m, value: (mode == 2).then_some(value) }
+    MaskExpansion {
+        mode: m,
+        value: (mode == 2).then_some(value),
+    }
 }
 
 /// Pad shape name from the base shape byte and the alternate shape byte (9 = rounded rect).
@@ -578,20 +651,35 @@ fn hole_shape(h: u8) -> Option<&'static str> {
 
 pub fn parse_pad(b: &mut Bin, index: usize) -> Result<Pad> {
     let mut s1 = b.sub()?;
-    let number = if s1.remaining() > 0 { s1.pascal()? } else { String::new() };
+    let number = if s1.remaining() > 0 {
+        s1.pascal()?
+    } else {
+        String::new()
+    };
     for _ in 0..3 {
         b.sub()?;
     }
     let mut s = b.sub()?;
     let len5 = s.buf.len();
     if len5 < 110 {
-        return Err(Error::parse(format!("Pads6 subrecord 5 is {len5} bytes, expected at least 110")));
+        return Err(Error::parse(format!(
+            "Pads6 subrecord 5 is {len5} bytes, expected at least 110"
+        )));
     }
     let h = head(&mut s)?;
     let pos = point(&mut s)?;
-    let top = Size { x: coord(&mut s)?, y: coord(&mut s)? };
-    let mid = Size { x: coord(&mut s)?, y: coord(&mut s)? };
-    let bot = Size { x: coord(&mut s)?, y: coord(&mut s)? };
+    let top = Size {
+        x: coord(&mut s)?,
+        y: coord(&mut s)?,
+    };
+    let mid = Size {
+        x: coord(&mut s)?,
+        y: coord(&mut s)?,
+    };
+    let bot = Size {
+        x: coord(&mut s)?,
+        y: coord(&mut s)?,
+    };
     let hole = coord(&mut s)?;
     let (ts, ms, bs) = (s.u8()?, s.u8()?, s.u8()?);
     let rotation = s.f64()?;
@@ -652,7 +740,13 @@ pub fn parse_pad(b: &mut Bin, index: usize) -> Result<Pad> {
     let mut alt = [0u8; 32];
     let mut corner = [0u8; 32];
     let mut offs = [Point::default(); 32];
-    let mut inner = [(Size { x: Coord(0), y: Coord(0) }, 0u8); 29];
+    let mut inner = [(
+        Size {
+            x: Coord(0),
+            y: Coord(0),
+        },
+        0u8,
+    ); 29];
     let has6 = s6.buf.len() >= 596;
     if has6 {
         for i in inner.iter_mut() {
@@ -856,7 +950,10 @@ pub fn parse_text(b: &mut Bin, index: usize, wide: &HashMap<u32, String>) -> Res
         let mut barcode = None;
         if rem >= 93 {
             s.skip(8)?;
-            let margin = Size { x: coord(&mut s)?, y: coord(&mut s)? };
+            let margin = Size {
+                x: coord(&mut s)?,
+                y: coord(&mut s)?,
+            };
             s.skip(4)?;
             let kind = if s.u8()? == 1 { "code128" } else { "code39" };
             s.skip(1)?;
@@ -865,7 +962,12 @@ pub fn parse_text(b: &mut Bin, index: usize, wide: &HashMap<u32, String>) -> Res
             let bfont = utf16z(s.bytes(64)?);
             s.skip(1)?;
             v7 = Some(s.u32()?);
-            barcode = Some(Barcode { kind, margin, inverted: binv, font_name: bfont });
+            barcode = Some(Barcode {
+                kind,
+                margin,
+                inverted: binv,
+                font_name: bfont,
+            });
         }
         let framed = if rem >= 103 {
             let f = s.u8()? != 0;
@@ -877,7 +979,11 @@ pub fn parse_text(b: &mut Bin, index: usize, wide: &HashMap<u32, String>) -> Res
         let just_valid = if rem >= 115 { s.u8()? != 0 } else { false };
         if framed {
             t.frame = Some(Size { x: fw, y: fh });
-            t.justification = if just_valid { text_position(just) } else { Some("left_bottom") };
+            t.justification = if just_valid {
+                text_position(just)
+            } else {
+                Some("left_bottom")
+            };
         }
         t.inverted = inverted;
         t.widestring_index = Some(wi);
@@ -900,7 +1006,11 @@ pub fn parse_text(b: &mut Bin, index: usize, wide: &HashMap<u32, String>) -> Res
     t.layer = Layer::versioned(layer, v7);
     // Subrecord 2: legacy 8-bit text, superseded by the wide string table when present.
     let mut s2 = b.sub()?;
-    let legacy = if s2.remaining() > 0 { s2.pascal()? } else { String::new() };
+    let legacy = if s2.remaining() > 0 {
+        s2.pascal()?
+    } else {
+        String::new()
+    };
     t.text = match t.widestring_index.and_then(|i| wide.get(&i)) {
         Some(w) => w.clone(),
         None => {
@@ -970,7 +1080,13 @@ fn fpt(b: &mut Bin) -> Result<Vertex> {
 
 /// `extended`: ShapeBasedRegions6 layout (n+1 vertices with arc data) instead of plain f64
 /// points.
-pub fn parse_region(b: &mut Bin, index: usize, source: &'static str, extended: bool, keep_raw: bool) -> Result<Region> {
+pub fn parse_region(
+    b: &mut Bin,
+    index: usize,
+    source: &'static str,
+    extended: bool,
+    keep_raw: bool,
+) -> Result<Region> {
     let mut s = b.sub()?;
     let h = head(&mut s)?; // includes 4 of the 5 skipped bytes
     s.skip(1)?;
@@ -990,11 +1106,18 @@ pub fn parse_region(b: &mut Bin, index: usize, source: &'static str, extended: b
             outline.push(Vertex {
                 x: p.x,
                 y: p.y,
-                arc: round.then_some(VertexArc { center: c, radius: r, start_angle: a1, end_angle: a2 }),
+                arc: round.then_some(VertexArc {
+                    center: c,
+                    radius: r,
+                    start_angle: a1,
+                    end_angle: a2,
+                }),
             });
         }
         // The last vertex repeats the first to close the shape.
-        if outline.len() > 1 && outline.first().map(|v| (v.x, v.y)) == outline.last().map(|v| (v.x, v.y)) {
+        if outline.len() > 1
+            && outline.first().map(|v| (v.x, v.y)) == outline.last().map(|v| (v.x, v.y))
+        {
             outline.pop();
         }
     } else {
@@ -1030,7 +1153,10 @@ pub fn parse_region(b: &mut Bin, index: usize, source: &'static str, extended: b
     for hole in &holes {
         area -= polygon_area(&flatten(hole, true).0);
     }
-    let kr = props.int("KEEPOUTRESTRICTIONS").map(|v| v as u8).unwrap_or(0x1F);
+    let kr = props
+        .int("KEEPOUTRESTRICTIONS")
+        .map(|v| v as u8)
+        .unwrap_or(0x1F);
     Ok(Region {
         index,
         source,
@@ -1042,7 +1168,11 @@ pub fn parse_region(b: &mut Bin, index: usize, source: &'static str, extended: b
         polygon: opt16(h.polygon),
         locked: h.locked(),
         keepout: h.keepout(),
-        keepout_restrictions: if h.keepout() { keepout_names(kr) } else { vec![] },
+        keepout_restrictions: if h.keepout() {
+            keepout_names(kr)
+        } else {
+            vec![]
+        },
         teardrop: h.flags1 & 0x10 != 0,
         shape_based: props.bool("ISSHAPEBASED"),
         bbox: bbox_of(&pts),
@@ -1192,7 +1322,11 @@ pub fn parse_stream<T>(
         match f(&mut b, out.len()) {
             Ok(v) => out.push(v),
             Err(e) => {
-                warnings.push(format!("{stream}: record {} at byte {at}: {}; rest of stream skipped", out.len(), e.message));
+                warnings.push(format!(
+                    "{stream}: record {} at byte {at}: {}; rest of stream skipped",
+                    out.len(),
+                    e.message
+                ));
                 break;
             }
         }
@@ -1251,7 +1385,13 @@ pub(crate) mod tests {
         }
         /// layer, flags1, flags2, net, polygon, component, 4 unknown bytes.
         pub fn head(self, layer: u8, flags1: u8, net: u16, polygon: u16, component: u16) -> Self {
-            self.u8(layer).u8(flags1).u8(0).u16(net).u16(polygon).u16(component).zeros(4)
+            self.u8(layer)
+                .u8(flags1)
+                .u8(0)
+                .u16(net)
+                .u16(polygon)
+                .u16(component)
+                .zeros(4)
         }
     }
 
@@ -1290,7 +1430,15 @@ pub(crate) mod tests {
 
     #[test]
     fn short_track_is_old_format() {
-        let body = W::default().head(57, 0, NONE16, NONE16, 2).i32(0).i32(0).i32(0).i32(10).i32(5).u16(0).u8(0);
+        let body = W::default()
+            .head(57, 0, NONE16, NONE16, 2)
+            .i32(0)
+            .i32(0)
+            .i32(0)
+            .i32(10)
+            .i32(5)
+            .u16(0)
+            .u8(0);
         let t = one(W::default().sub(body), |b| parse_track(b, 0));
         assert_eq!(t.layer.name(), "Mechanical1");
         assert!(t.locked);
@@ -1312,7 +1460,10 @@ pub(crate) mod tests {
         assert_eq!(a.layer, Layer::TOP_OVERLAY);
         assert_eq!(a.start, Point::new(Coord(11_000), Coord(2000)));
         assert_eq!(a.end, Point::new(Coord(1000), Coord(12_000)));
-        assert_eq!(a.length, Coord((10_000.0 * std::f64::consts::FRAC_PI_2).round() as i64));
+        assert_eq!(
+            a.length,
+            Coord((10_000.0 * std::f64::consts::FRAC_PI_2).round() as i64)
+        );
     }
 
     /// Subrecord 5 of a pad, 180 bytes, layer byte `l6`, 32-bit layer at 114.
@@ -1360,7 +1511,13 @@ pub(crate) mod tests {
         assert_eq!(p.number, "A1");
         assert_eq!(p.layer, Layer::MULTI);
         assert_eq!(p.shape, "round");
-        assert_eq!(p.size, Size { x: Coord(600), y: Coord(2200) });
+        assert_eq!(
+            p.size,
+            Size {
+                x: Coord(600),
+                y: Coord(2200)
+            }
+        );
         assert_eq!(p.rotation, 90.0);
         assert_eq!(p.hole_size, Some(Coord(9000)));
         assert_eq!(p.hole_shape, Some("round"));
@@ -1375,7 +1532,12 @@ pub(crate) mod tests {
 
     #[test]
     fn pad_size_and_shape_table() {
-        let mut s6 = W::default().zeros(29 * 4 * 2 + 29 + 1).u8(2).i32(40_000).f64(0.0).zeros(32 * 4 * 2 + 1);
+        let mut s6 = W::default()
+            .zeros(29 * 4 * 2 + 29 + 1)
+            .u8(2)
+            .i32(40_000)
+            .f64(0.0)
+            .zeros(32 * 4 * 2 + 1);
         let mut alt = [0u8; 32];
         alt[0] = 9;
         let mut cr = [0u8; 32];
@@ -1398,7 +1560,16 @@ pub(crate) mod tests {
 
     #[test]
     fn via_simple_and_extended() {
-        let base = || W::default().head(74, 0x60 | 0x04, 5, NONE16, NONE16).i32(10).i32(20).i32(6000).i32(3000).u8(1).u8(32);
+        let base = || {
+            W::default()
+                .head(74, 0x60 | 0x04, 5, NONE16, NONE16)
+                .i32(10)
+                .i32(20)
+                .i32(6000)
+                .i32(3000)
+                .u8(1)
+                .u8(32)
+        };
         let v = one(W::default().sub(base()), |b| parse_via(b, 0));
         assert_eq!((v.diameter, v.hole_size), (Coord(6000), Coord(3000)));
         assert_eq!((v.start_layer, v.end_layer), (Layer::TOP, Layer::BOTTOM));
@@ -1419,14 +1590,21 @@ pub(crate) mod tests {
             .u8(0x01)
             .zeros(6)
             .u8(2)
-            .bytes(&(0..32).flat_map(|i: i32| (6000 + i).to_le_bytes()).collect::<Vec<u8>>());
+            .bytes(
+                &(0..32)
+                    .flat_map(|i: i32| (6000 + i).to_le_bytes())
+                    .collect::<Vec<u8>>(),
+            );
         let v = one(W::default().sub(ext), |b| parse_via(b, 1));
         assert_eq!(v.mode, "full_stack");
         assert_eq!(v.diameters.len(), 32);
         assert_eq!(v.diameters[31].layer, Layer::BOTTOM);
         assert_eq!(v.diameters[31].diameter, Coord(6031));
         let m = v.solder_mask_expansion.unwrap();
-        assert_eq!((m.front, m.back, m.from_hole), (Coord(40_000), Coord(40_000), true));
+        assert_eq!(
+            (m.front, m.back, m.from_hole),
+            (Coord(40_000), Coord(40_000), true)
+        );
         assert_eq!(v.thermal_relief.unwrap().conductors, 4);
     }
 
@@ -1444,7 +1622,10 @@ pub(crate) mod tests {
             .u8(1)
             .i32(100_000);
         if long {
-            let mut font = "Arial".encode_utf16().flat_map(|u| u.to_le_bytes()).collect::<Vec<u8>>();
+            let mut font = "Arial"
+                .encode_utf16()
+                .flat_map(|u| u.to_le_bytes())
+                .collect::<Vec<u8>>();
             font.resize(64, 0);
             s1 = s1
                 .u8(0)
@@ -1463,14 +1644,20 @@ pub(crate) mod tests {
                 .i32(0)
                 .u8(5)
                 .i32(0);
-            assert_eq!(s1.0.len(), 137, "fixed part of the extended (>= 123 byte) text layout");
+            assert_eq!(
+                s1.0.len(),
+                137,
+                "fixed part of the extended (>= 123 byte) text layout"
+            );
         }
         W::default().sub(s1).sub(W::default().pascal(legacy))
     }
 
     #[test]
     fn texts_old_and_new() {
-        let t = one(text_rec(false, 0, "OLD"), |b| parse_text(b, 0, &HashMap::new()));
+        let t = one(text_rec(false, 0, "OLD"), |b| {
+            parse_text(b, 0, &HashMap::new())
+        });
         assert_eq!(t.text, "OLD");
         assert_eq!(t.layer, Layer::TOP_OVERLAY);
         assert_eq!(t.owner.component_index, Some(4));
@@ -1491,16 +1678,33 @@ pub(crate) mod tests {
     }
 
     fn region_head(layer: u8, holes: u16) -> W {
-        W::default().head(layer, 0x04, NONE16, 0, NONE16).u8(0).u16(holes).zeros(2)
+        W::default()
+            .head(layer, 0x04, NONE16, 0, NONE16)
+            .u8(0)
+            .u16(holes)
+            .zeros(2)
     }
 
     #[test]
     fn flat_region_with_hole() {
-        let sq = |w: W, s: f64| w.f64(0.0).f64(0.0).f64(s).f64(0.0).f64(s).f64(s).f64(0.0).f64(s);
-        let body = region_head(1, 1).props("|V7_LAYER=TOP|KIND=0|ISSHAPEBASED=FALSE").u32(4);
+        let sq = |w: W, s: f64| {
+            w.f64(0.0)
+                .f64(0.0)
+                .f64(s)
+                .f64(0.0)
+                .f64(s)
+                .f64(s)
+                .f64(0.0)
+                .f64(s)
+        };
+        let body = region_head(1, 1)
+            .props("|V7_LAYER=TOP|KIND=0|ISSHAPEBASED=FALSE")
+            .u32(4);
         let body = sq(body, 100.0).u32(4);
         let body = sq(body, 10.0);
-        let r = one(W::default().sub(body), |b| parse_region(b, 0, "regions", false, false));
+        let r = one(W::default().sub(body), |b| {
+            parse_region(b, 0, "regions", false, false)
+        });
         assert_eq!(r.kind, "copper");
         assert_eq!(r.layer, Layer::TOP);
         assert_eq!(r.polygon, Some(0));
@@ -1511,7 +1715,14 @@ pub(crate) mod tests {
 
     #[allow(clippy::too_many_arguments)]
     fn xv(w: W, round: u8, x: i32, y: i32, cx: i32, cy: i32, r: i32, a1: f64, a2: f64) -> W {
-        w.u8(round).i32(x).i32(y).i32(cx).i32(cy).i32(r).f64(a1).f64(a2)
+        w.u8(round)
+            .i32(x)
+            .i32(y)
+            .i32(cx)
+            .i32(cy)
+            .i32(r)
+            .f64(a1)
+            .f64(a2)
     }
 
     #[test]
@@ -1521,7 +1732,9 @@ pub(crate) mod tests {
         let body = xv(body, 0, 0, 0, 0, 0, 0, 0.0, 0.0);
         let body = xv(body, 1, 200, 0, 100, 0, 100, 0.0, 180.0);
         let body = xv(body, 0, 0, 0, 0, 0, 0, 0.0, 0.0);
-        let r = one(W::default().sub(body), |b| parse_region(b, 0, "shape_based_regions", true, false));
+        let r = one(W::default().sub(body), |b| {
+            parse_region(b, 0, "shape_based_regions", true, false)
+        });
         assert_eq!(r.kind, "polygon_cutout");
         assert!(r.shape_based);
         assert_eq!(r.outline.len(), 2, "closing vertex dropped");
@@ -1531,12 +1744,20 @@ pub(crate) mod tests {
 
     #[test]
     fn board_region_kind() {
-        let body = region_head(56, 0).props("|KIND=0|ISBOARDCUTOUT=TRUE|OBJECTKIND=BoardRegion|LAYERSTACKID={S}").u32(0);
-        let r = one(W::default().sub(body), |b| parse_region(b, 0, "board_regions", false, false));
+        let body = region_head(56, 0)
+            .props("|KIND=0|ISBOARDCUTOUT=TRUE|OBJECTKIND=BoardRegion|LAYERSTACKID={S}")
+            .u32(0);
+        let r = one(W::default().sub(body), |b| {
+            parse_region(b, 0, "board_regions", false, false)
+        });
         assert_eq!(r.kind, "board_region");
         assert_eq!(r.layer_stack.as_deref(), Some("{S}"));
-        let body = region_head(56, 0).props("|KIND=0|ISBOARDCUTOUT=TRUE").u32(0);
-        let r = one(W::default().sub(body), |b| parse_region(b, 0, "regions", false, false));
+        let body = region_head(56, 0)
+            .props("|KIND=0|ISBOARDCUTOUT=TRUE")
+            .u32(0);
+        let r = one(W::default().sub(body), |b| {
+            parse_region(b, 0, "regions", false, false)
+        });
         assert_eq!(r.kind, "board_cutout");
     }
 
@@ -1562,7 +1783,11 @@ pub(crate) mod tests {
 
     #[test]
     fn stream_stops_on_wrong_type() {
-        let rec = W::default().u8(rec::TRACK).sub(W::default().head(1, 0, 0, 0, 0).zeros(23)).u8(rec::ARC).u32(0);
+        let rec = W::default()
+            .u8(rec::TRACK)
+            .sub(W::default().head(1, 0, 0, 0, 0).zeros(23))
+            .u8(rec::ARC)
+            .u32(0);
         let mut w = vec![];
         let v = parse_stream(&rec.0, "Tracks6", rec::TRACK, &mut w, parse_track);
         assert_eq!(v.len(), 1);
@@ -1572,7 +1797,10 @@ pub(crate) mod tests {
 
     #[test]
     fn keepouts() {
-        assert_eq!(keepout_names(0x1F), vec!["via", "track", "copper", "smd_pad", "th_pad"]);
+        assert_eq!(
+            keepout_names(0x1F),
+            vec!["via", "track", "copper", "smd_pad", "th_pad"]
+        );
         assert_eq!(codepoints("71,78,68"), "GND");
     }
 }

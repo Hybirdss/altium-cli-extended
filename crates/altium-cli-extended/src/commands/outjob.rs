@@ -45,19 +45,64 @@ pub enum OutjobCmd {
     SetVariant { outjob: PathBuf, variant: String },
 }
 
-
 pub const META: &[CmdMeta] = &[
-    m("outjob info", Native, Read, "{group:{...}, mediums:[...], outputs:N, by_type:{...}}", "ace outjob info Fab.OutJob", ""),
-    m("outjob outputs", Native, Read, "{count, items:[{index, name, output_type, category, document, variant, enabled_for:[media], config_items}]}",
-      "ace outjob outputs Fab.OutJob --where output_type~gerber", ""),
-    m("outjob output", Native, Read, "{output:{...}, config:[{Record, ...}]}", "ace outjob output Fab.OutJob \"Gerber X2\"", ""),
-    m("outjob mediums", Native, Read, "{count, items:[{index, name, kind, settings}]}", "ace outjob mediums Fab.OutJob", ""),
-    m("outjob enable", Native, Write, "{changed:[{output, medium, enabled}], backup}",
-      "ace outjob enable Fab.OutJob \"NC Drill\" --medium \"Gerber folder\"", ""),
-    m("outjob set-document", Native, Write, "{changed:[{output, before, after}], backup}", "ace outjob set-document Fab.OutJob all Board.PcbDoc", ""),
-    m("outjob set-variant", Native, Write, "{before, after, backup}", "ace outjob set-variant Fab.OutJob \"No LCD\"", "Use `[No Variations]` to clear."),
+    m(
+        "outjob info",
+        Native,
+        Read,
+        "{group:{...}, mediums:[...], outputs:N, by_type:{...}}",
+        "ace outjob info Fab.OutJob",
+        "",
+    ),
+    m(
+        "outjob outputs",
+        Native,
+        Read,
+        "{count, items:[{index, name, output_type, category, document, variant, enabled_for:[media], config_items}]}",
+        "ace outjob outputs Fab.OutJob --where output_type~gerber",
+        "",
+    ),
+    m(
+        "outjob output",
+        Native,
+        Read,
+        "{output:{...}, config:[{Record, ...}]}",
+        "ace outjob output Fab.OutJob \"Gerber X2\"",
+        "",
+    ),
+    m(
+        "outjob mediums",
+        Native,
+        Read,
+        "{count, items:[{index, name, kind, settings}]}",
+        "ace outjob mediums Fab.OutJob",
+        "",
+    ),
+    m(
+        "outjob enable",
+        Native,
+        Write,
+        "{changed:[{output, medium, enabled}], backup}",
+        "ace outjob enable Fab.OutJob \"NC Drill\" --medium \"Gerber folder\"",
+        "",
+    ),
+    m(
+        "outjob set-document",
+        Native,
+        Write,
+        "{changed:[{output, before, after}], backup}",
+        "ace outjob set-document Fab.OutJob all Board.PcbDoc",
+        "",
+    ),
+    m(
+        "outjob set-variant",
+        Native,
+        Write,
+        "{before, after, backup}",
+        "ace outjob set-variant Fab.OutJob \"No LCD\"",
+        "Use `[No Variations]` to clear.",
+    ),
 ];
-
 
 pub fn info(file: &Path, ctx: &Ctx) -> Result<Out> {
     let j = OutJob::load(&ctx.input(file)?)?;
@@ -67,7 +112,11 @@ pub fn info(file: &Path, ctx: &Ctx) -> Result<Out> {
         let e = by_type.entry(o.output_type.clone()).or_insert(json!(0));
         *e = json!(e.as_u64().unwrap_or(0) + 1);
     }
-    let never: Vec<String> = outputs.iter().filter(|o| o.enabled_for.is_empty()).map(|o| o.name.clone()).collect();
+    let never: Vec<String> = outputs
+        .iter()
+        .filter(|o| o.enabled_for.is_empty())
+        .map(|o| o.name.clone())
+        .collect();
     Out::new(json!({
         "path": j.path,
         "group": j.group_info(),
@@ -88,8 +137,10 @@ pub fn run(c: OutjobCmd, ctx: &Ctx) -> Result<Out> {
         OutjobCmd::Output { outjob, output } => {
             let j = OutJob::load(&ctx.input(&outjob)?)?;
             let hits = j.find_output(&output)?;
-            let items: Vec<Value> =
-                hits.iter().map(|o| json!({"output": o, "config": j.output_config(o.index)})).collect();
+            let items: Vec<Value> = hits
+                .iter()
+                .map(|o| json!({"output": o, "config": j.output_config(o.index)}))
+                .collect();
             if items.len() == 1 {
                 Out::new(items.into_iter().next().unwrap())
             } else {
@@ -100,7 +151,12 @@ pub fn run(c: OutjobCmd, ctx: &Ctx) -> Result<Out> {
             let j = OutJob::load(&ctx.input(&outjob)?)?;
             Out::new(list(&j.mediums())?)
         }
-        OutjobCmd::Enable { outjob, output, medium, off } => {
+        OutjobCmd::Enable {
+            outjob,
+            output,
+            medium,
+            off,
+        } => {
             let path = ctx.input(&outjob)?;
             let mut j = OutJob::load(&path)?;
             let med = j.find_medium(&medium)?;
@@ -114,13 +170,25 @@ pub fn run(c: OutjobCmd, ctx: &Ctx) -> Result<Out> {
                 j.set_enabled(o.index, med.index, !off);
                 changed.push(json!({"output": o.name, "index": o.index, "medium": med.name, "enabled": !off}));
             }
-            let backup = if changed.is_empty() { None } else { save(ctx, &path, &j)? };
+            let backup = if changed.is_empty() {
+                None
+            } else {
+                save(ctx, &path, &j)?
+            };
             Out::new(list_with(&changed, json!({"backup": backup}))?)
         }
-        OutjobCmd::SetDocument { outjob, output, document } => {
+        OutjobCmd::SetDocument {
+            outjob,
+            output,
+            document,
+        } => {
             let path = ctx.input(&outjob)?;
             let mut j = OutJob::load(&path)?;
-            let outs = if output.eq_ignore_ascii_case("all") { j.outputs() } else { j.find_output(&output)? };
+            let outs = if output.eq_ignore_ascii_case("all") {
+                j.outputs()
+            } else {
+                j.find_output(&output)?
+            };
             let g = j.ini.section_mut("OutputGroup1").unwrap();
             let mut changed = vec![];
             for o in outs {
@@ -130,7 +198,11 @@ pub fn run(c: OutjobCmd, ctx: &Ctx) -> Result<Out> {
                     changed.push(json!({"output": o.name, "index": o.index, "before": o.document, "after": document}));
                 }
             }
-            let backup = if changed.is_empty() { None } else { save(ctx, &path, &j)? };
+            let backup = if changed.is_empty() {
+                None
+            } else {
+                save(ctx, &path, &j)?
+            };
             Out::new(list_with(&changed, json!({"backup": backup}))?)
         }
         OutjobCmd::SetVariant { outjob, variant } => {
@@ -139,7 +211,11 @@ pub fn run(c: OutjobCmd, ctx: &Ctx) -> Result<Out> {
             let g = j.ini.section_mut("OutputGroup1").unwrap();
             let before = g.str("VariantName");
             g.set("VariantName", &variant);
-            let backup = if before != variant { save(ctx, &path, &j)? } else { None };
+            let backup = if before != variant {
+                save(ctx, &path, &j)?
+            } else {
+                None
+            };
             Out::new(json!({"before": before, "after": variant, "backup": backup}))
         }
     }

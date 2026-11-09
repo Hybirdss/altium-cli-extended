@@ -25,9 +25,8 @@ pub struct StreamInfo {
 
 impl Compound {
     pub fn open(path: &Path) -> Result<Compound> {
-        let bytes = std::fs::read(path).map_err(|e| {
-            Error::from(e).hint(format!("check the path: {}", path.display()))
-        })?;
+        let bytes = std::fs::read(path)
+            .map_err(|e| Error::from(e).hint(format!("check the path: {}", path.display())))?;
         Self::from_bytes(path, bytes)
     }
 
@@ -35,13 +34,21 @@ impl Compound {
         if bytes.len() < 8 || bytes[..8] != [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1] {
             return Err(Error::new(
                 ErrorCode::WrongFileType,
-                format!("{} is not an OLE compound file (binary Altium document)", path.display()),
+                format!(
+                    "{} is not an OLE compound file (binary Altium document)",
+                    path.display()
+                ),
             )
-            .hint("ASCII-format .SchDoc/.PcbDoc files are not supported; save as binary in Altium"));
+            .hint(
+                "ASCII-format .SchDoc/.PcbDoc files are not supported; save as binary in Altium",
+            ));
         }
         let cf = cfb::CompoundFile::open(Cursor::new(bytes))
             .map_err(|e| Error::parse(format!("{}: corrupt compound file: {e}", path.display())))?;
-        Ok(Compound { path: path.to_owned(), cf })
+        Ok(Compound {
+            path: path.to_owned(),
+            cf,
+        })
     }
 
     /// Every stream in the file, depth first.
@@ -69,20 +76,27 @@ impl Compound {
     pub fn storages(&self, parent: &str) -> Vec<String> {
         let p = format!("/{}", parent.trim_matches('/'));
         match self.cf.read_storage(&p) {
-            Ok(it) => it.filter(|e| e.is_storage()).map(|e| e.name().to_owned()).collect(),
+            Ok(it) => it
+                .filter(|e| e.is_storage())
+                .map(|e| e.name().to_owned())
+                .collect(),
             Err(_) => vec![],
         }
     }
 
     pub fn exists(&self, stream: &str) -> bool {
-        self.cf.is_stream(format!("/{}", stream.trim_start_matches('/')))
+        self.cf
+            .is_stream(format!("/{}", stream.trim_start_matches('/')))
     }
 
     /// Read a whole stream. `stream` is a `/`-separated path like `Pads6/Data`.
     pub fn read(&mut self, stream: &str) -> Result<Vec<u8>> {
         let p = format!("/{}", stream.trim_start_matches('/'));
         let mut s = self.cf.open_stream(&p).map_err(|_| {
-            Error::not_found(format!("stream {stream} not found in {}", self.path.display()))
+            Error::not_found(format!(
+                "stream {stream} not found in {}",
+                self.path.display()
+            ))
         })?;
         let mut buf = Vec::new();
         s.read_to_end(&mut buf)?;
@@ -91,7 +105,11 @@ impl Compound {
 
     /// Read a stream if it exists.
     pub fn read_opt(&mut self, stream: &str) -> Option<Vec<u8>> {
-        if self.exists(stream) { self.read(stream).ok() } else { None }
+        if self.exists(stream) {
+            self.read(stream).ok()
+        } else {
+            None
+        }
     }
 
     /// Replace a stream's contents (creating it if needed).
@@ -109,17 +127,23 @@ impl Compound {
     /// left alone; a stream on the path is an error.
     pub fn create_storage(&mut self, storage: &str) -> Result<()> {
         let p = format!("/{}", storage.trim_matches('/'));
-        self.cf
-            .create_storage_all(&p)
-            .map_err(|e| Error::new(ErrorCode::Io, format!("cannot create storage {storage}: {e}")))
+        self.cf.create_storage_all(&p).map_err(|e| {
+            Error::new(
+                ErrorCode::Io,
+                format!("cannot create storage {storage}: {e}"),
+            )
+        })
     }
 
     /// Remove a storage and everything inside it (streams and nested storages).
     pub fn remove_storage(&mut self, storage: &str) -> Result<()> {
         let p = format!("/{}", storage.trim_matches('/'));
-        self.cf
-            .remove_storage_all(&p)
-            .map_err(|e| Error::new(ErrorCode::Io, format!("cannot remove storage {storage}: {e}")))
+        self.cf.remove_storage_all(&p).map_err(|e| {
+            Error::new(
+                ErrorCode::Io,
+                format!("cannot remove storage {storage}: {e}"),
+            )
+        })
     }
 
     /// Serialise the whole compound file.
@@ -166,7 +190,10 @@ pub fn split_records(buf: &[u8]) -> (Vec<Record>, usize) {
         if pos + len > buf.len() {
             return (out, buf.len() - (pos - 4));
         }
-        out.push(Record { kind, data: buf[pos..pos + len].to_vec() });
+        out.push(Record {
+            kind,
+            data: buf[pos..pos + len].to_vec(),
+        });
         pos += len;
     }
     (out, buf.len() - pos)
@@ -177,8 +204,11 @@ pub fn join_records(records: &[Record]) -> Result<Vec<u8>> {
     let mut out = Vec::new();
     for r in records {
         if r.data.len() > 0x00FF_FFFF {
-            return Err(Error::usage(format!("a record of {} bytes exceeds the 16 MiB record limit", r.data.len()))
-                .hint("shorten the value; nothing was written"));
+            return Err(Error::usage(format!(
+                "a record of {} bytes exceeds the 16 MiB record limit",
+                r.data.len()
+            ))
+            .hint("shorten the value; nothing was written"));
         }
         let word = ((r.kind as u32) << 24) | r.data.len() as u32;
         out.extend(word.to_le_bytes());
@@ -261,7 +291,12 @@ impl<'a> Bin<'a> {
 
 /// Decode UTF-16LE bytes (an odd trailing byte is ignored).
 pub fn utf16le(b: &[u8]) -> String {
-    let units: Vec<u16> = b.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
+    let units: Vec<u16> = b
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
+        .collect();
     String::from_utf16_lossy(&units)
 }
 
@@ -272,14 +307,19 @@ pub fn wide_string_table(buf: &[u8], warnings: &mut Vec<String>) -> HashMap<u32,
     let mut out = HashMap::new();
     let mut b = Bin::new(buf);
     while b.remaining() >= 8 {
-        let (Ok(idx), Ok(len)) = (b.u32(), b.u32()) else { break };
+        let (Ok(idx), Ok(len)) = (b.u32(), b.u32()) else {
+            break;
+        };
         let len = len as usize;
         if len <= 2 {
             out.insert(idx, String::new());
             continue;
         }
         let Ok(raw) = b.bytes(len) else {
-            warnings.push(format!("WideStrings6: entry {idx} claims {len} bytes, only {} left", b.remaining()));
+            warnings.push(format!(
+                "WideStrings6: entry {idx} claims {len} bytes, only {} left",
+                b.remaining()
+            ));
             return out;
         };
         out.insert(idx, utf16le(&raw[..len - 2]));
@@ -296,7 +336,11 @@ pub fn encoded_text_table(props: &Props) -> HashMap<u32, String> {
     props
         .entries()
         .filter_map(|(k, v)| {
-            let i = k.to_ascii_uppercase().strip_prefix("ENCODEDTEXT")?.parse::<u32>().ok()?;
+            let i = k
+                .to_ascii_uppercase()
+                .strip_prefix("ENCODEDTEXT")?
+                .parse::<u32>()
+                .ok()?;
             Some((i, codepoints(v)))
         })
         .collect()
@@ -309,8 +353,14 @@ mod tests {
     #[test]
     fn records_roundtrip() {
         let recs = vec![
-            Record { kind: 0, data: b"|A=1\0".to_vec() },
-            Record { kind: 1, data: vec![1, 2, 3] },
+            Record {
+                kind: 0,
+                data: b"|A=1\0".to_vec(),
+            },
+            Record {
+                kind: 1,
+                data: vec![1, 2, 3],
+            },
         ];
         let buf = join_records(&recs).unwrap();
         let (back, left) = split_records(&buf);
@@ -322,9 +372,18 @@ mod tests {
 
     #[test]
     fn oversized_record_is_refused() {
-        let at_limit = Record { kind: 0, data: vec![0; 0x00FF_FFFF] };
-        assert_eq!(join_records(std::slice::from_ref(&at_limit)).unwrap().len(), 4 + 0x00FF_FFFF);
-        let over = Record { kind: 0, data: vec![0; 0x0100_0000] };
+        let at_limit = Record {
+            kind: 0,
+            data: vec![0; 0x00FF_FFFF],
+        };
+        assert_eq!(
+            join_records(std::slice::from_ref(&at_limit)).unwrap().len(),
+            4 + 0x00FF_FFFF
+        );
+        let over = Record {
+            kind: 0,
+            data: vec![0; 0x0100_0000],
+        };
         assert_eq!(join_records(&[over]).unwrap_err().code, ErrorCode::Usage);
     }
 
@@ -332,7 +391,10 @@ mod tests {
     fn stream_paths_use_forward_slashes_on_every_os() {
         let mut cf = cfb::CompoundFile::create(Cursor::new(Vec::new())).unwrap();
         cf.create_storage("/Rules6").unwrap();
-        cf.create_stream("/Rules6/Data").unwrap().write_all(b"x").unwrap();
+        cf.create_stream("/Rules6/Data")
+            .unwrap()
+            .write_all(b"x")
+            .unwrap();
         cf.flush().unwrap();
         let c = Compound::from_bytes(Path::new("t.PcbDoc"), cf.into_inner().into_inner()).unwrap();
         let paths: Vec<String> = c.streams().into_iter().map(|s| s.path).collect();

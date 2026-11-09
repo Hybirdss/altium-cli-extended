@@ -12,10 +12,25 @@ use altium_doc::project::Variant;
 use crate::designator;
 
 /// Parameter names that commonly carry sourcing data, in lookup order.
-const MPN_KEYS: &[&str] = &["Manufacturer Part Number", "MPN", "Manufacturer Part Number 1", "Part Number", "PartNumber", "MfrPN"];
+const MPN_KEYS: &[&str] = &[
+    "Manufacturer Part Number",
+    "MPN",
+    "Manufacturer Part Number 1",
+    "Part Number",
+    "PartNumber",
+    "MfrPN",
+];
 const MFR_KEYS: &[&str] = &["Manufacturer", "Manufacturer 1", "MFR", "Mfr"];
 const VALUE_KEYS: &[&str] = &["Value", "Val"];
-const SUPPLIER_PN_KEYS: &[&str] = &["Supplier Part Number 1", "Supplier Part Number", "LCSC", "LCSC Part", "Digikey", "DigiKey Part Number", "Mouser Part Number"];
+const SUPPLIER_PN_KEYS: &[&str] = &[
+    "Supplier Part Number 1",
+    "Supplier Part Number",
+    "LCSC",
+    "LCSC Part",
+    "Digikey",
+    "DigiKey Part Number",
+    "Mouser Part Number",
+];
 
 #[derive(Debug, Clone)]
 pub struct BomOptions {
@@ -91,14 +106,29 @@ pub struct Bom {
 }
 
 /// Apply a variant's parameter variations and alternate parts to a copy of the parts.
-fn apply_variant(parts: &[Part], v: Option<&Variant>, varied: &mut Vec<String>, warnings: &mut Vec<String>) -> Vec<Part> {
+fn apply_variant(
+    parts: &[Part],
+    v: Option<&Variant>,
+    varied: &mut Vec<String>,
+    warnings: &mut Vec<String>,
+) -> Vec<Part> {
     let mut out = parts.to_vec();
     let Some(v) = v else { return out };
-    let find = |out: &[Part], d: &str| out.iter().position(|p| p.designator.eq_ignore_ascii_case(d.trim_end_matches('*')));
+    let find = |out: &[Part], d: &str| {
+        out.iter()
+            .position(|p| p.designator.eq_ignore_ascii_case(d.trim_end_matches('*')))
+    };
     for pv in &v.param_variations {
-        let get = |k: &str| pv.iter().find(|(x, _)| x.eq_ignore_ascii_case(k)).map(|(_, y)| y.as_str());
+        let get = |k: &str| {
+            pv.iter()
+                .find(|(x, _)| x.eq_ignore_ascii_case(k))
+                .map(|(_, y)| y.as_str())
+        };
         let (Some(d), Some(name)) = (get("Designator"), get("ParameterName")) else {
-            warnings.push(format!("variant {}: parameter variation without designator/name: {pv:?}", v.name));
+            warnings.push(format!(
+                "variant {}: parameter variation without designator/name: {pv:?}",
+                v.name
+            ));
             continue;
         };
         let value = get("VariantValue").unwrap_or("").to_owned();
@@ -106,7 +136,12 @@ fn apply_variant(parts: &[Part], v: Option<&Variant>, varied: &mut Vec<String>, 
         let p = &mut out[i];
         if name.eq_ignore_ascii_case("Comment") {
             p.comment = value;
-        } else if let Some(k) = p.parameters.keys().find(|k| k.eq_ignore_ascii_case(name)).cloned() {
+        } else if let Some(k) = p
+            .parameters
+            .keys()
+            .find(|k| k.eq_ignore_ascii_case(name))
+            .cloned()
+        {
             p.parameters.insert(k, value);
         } else {
             p.parameters.insert(name.to_owned(), value);
@@ -114,7 +149,9 @@ fn apply_variant(parts: &[Part], v: Option<&Variant>, varied: &mut Vec<String>, 
         varied.push(p.designator.clone());
     }
     for x in v.variations.iter().filter(|x| x.kind == "alternate") {
-        let Some(i) = find(&out, &x.designator) else { continue };
+        let Some(i) = find(&out, &x.designator) else {
+            continue;
+        };
         if !x.alternate_part.is_empty() {
             out[i].lib_ref = x.alternate_part.clone();
         }
@@ -130,12 +167,19 @@ fn apply_variant(parts: &[Part], v: Option<&Variant>, varied: &mut Vec<String>, 
 }
 
 fn lookup(p: &Part, keys: &[&str]) -> String {
-    keys.iter().find_map(|k| p.param(k)).unwrap_or("").to_owned()
+    keys.iter()
+        .find_map(|k| p.param(k))
+        .unwrap_or("")
+        .to_owned()
 }
 
 fn value(p: &Part) -> String {
     let explicit = lookup(p, VALUE_KEYS);
-    if explicit.trim().is_empty() { p.comment.clone() } else { explicit }
+    if explicit.trim().is_empty() {
+        p.comment.clone()
+    } else {
+        explicit
+    }
 }
 
 /// Value of one grouping field for a part.
@@ -162,7 +206,13 @@ pub fn build(design: &Design, opts: &BomOptions) -> Result<Bom> {
     let not_fitted: Vec<String> = opts
         .variant
         .as_ref()
-        .map(|v| v.variations.iter().filter(|x| x.kind == "not_fitted").map(|x| x.designator.trim_end_matches('*').to_owned()).collect())
+        .map(|v| {
+            v.variations
+                .iter()
+                .filter(|x| x.kind == "not_fitted")
+                .map(|x| x.designator.trim_end_matches('*').to_owned())
+                .collect()
+        })
         .unwrap_or_default();
     let is_dnp = |d: &str| not_fitted.iter().any(|n| n.eq_ignore_ascii_case(d));
 
@@ -171,7 +221,12 @@ pub fn build(design: &Design, opts: &BomOptions) -> Result<Bom> {
     let mut excluded = vec![];
     let mut warnings = vec![];
     let mut varied = vec![];
-    let parts = apply_variant(&design.parts, opts.variant.as_ref(), &mut varied, &mut warnings);
+    let parts = apply_variant(
+        &design.parts,
+        opts.variant.as_ref(),
+        &mut varied,
+        &mut warnings,
+    );
     for p in &parts {
         let d = is_dnp(&p.designator);
         if d {
@@ -187,11 +242,18 @@ pub fn build(design: &Design, opts: &BomOptions) -> Result<Bom> {
             }
         }
         let key: Vec<String> = opts.group_by.iter().map(|f| field(p, f)).collect();
-        groups.entry((d, p.exclude_from_bom, key)).or_default().push(p);
+        groups
+            .entry((d, p.exclude_from_bom, key))
+            .or_default()
+            .push(p);
     }
     for v in opts.variant.iter().flat_map(|v| &v.variations) {
         let d = v.designator.trim_end_matches('*');
-        if !design.parts.iter().any(|p| p.designator.eq_ignore_ascii_case(d)) {
+        if !design
+            .parts
+            .iter()
+            .any(|p| p.designator.eq_ignore_ascii_case(d))
+        {
             warnings.push(format!("variant names {d} but no such part exists"));
         }
     }
@@ -213,7 +275,11 @@ pub fn build(design: &Design, opts: &BomOptions) -> Result<Bom> {
             }
             let uniform = |f: fn(&Part) -> String| {
                 let v = f(first);
-                if parts.iter().all(|p| f(p) == v) { v } else { "<varies>".to_owned() }
+                if parts.iter().all(|p| f(p) == v) {
+                    v
+                } else {
+                    "<varies>".to_owned()
+                }
             };
             BomLine {
                 line: 0,
@@ -239,16 +305,31 @@ pub fn build(design: &Design, opts: &BomOptions) -> Result<Bom> {
     for (i, l) in lines.iter_mut().enumerate() {
         l.line = i + 1;
     }
-    let fallback_count: usize = lines.iter().filter(|l| !l.value.is_empty())
+    let fallback_count: usize = lines
+        .iter()
+        .filter(|l| !l.value.is_empty())
         .flat_map(|l| &l.designators)
-        .filter(|d| parts.iter().any(|p| &p.designator == *d && lookup(p, VALUE_KEYS).trim().is_empty())).count();
-    if fallback_count > 0 { warnings.push(format!("value parameter empty for {fallback_count} BOM part(s); using comment as value")); }
+        .filter(|d| {
+            parts
+                .iter()
+                .any(|p| &p.designator == *d && lookup(p, VALUE_KEYS).trim().is_empty())
+        })
+        .count();
+    if fallback_count > 0 {
+        warnings.push(format!(
+            "value parameter empty for {fallback_count} BOM part(s); using comment as value"
+        ));
+    }
     designator::sort(&mut dnp);
     designator::sort(&mut excluded);
     Ok(Bom {
         group_by: opts.group_by.clone(),
         variant: opts.variant.as_ref().map(|v| v.name.clone()),
-        total_parts: lines.iter().filter(|l| !l.dnp && !l.excluded).map(|l| l.quantity).sum(),
+        total_parts: lines
+            .iter()
+            .filter(|l| !l.dnp && !l.excluded)
+            .map(|l| l.quantity)
+            .sum(),
         unique_lines: lines.len(),
         lines,
         dnp,
@@ -259,8 +340,19 @@ pub fn build(design: &Design, opts: &BomOptions) -> Result<Bom> {
 }
 
 /// Default CSV columns (see [`column`]).
-pub const DEFAULT_COLUMNS: &[&str] =
-    &["line", "quantity", "designator_ranges", "comment", "footprint", "value", "manufacturer", "mpn", "supplier_pn", "description", "dnp"];
+pub const DEFAULT_COLUMNS: &[&str] = &[
+    "line",
+    "quantity",
+    "designator_ranges",
+    "comment",
+    "footprint",
+    "value",
+    "manufacturer",
+    "mpn",
+    "supplier_pn",
+    "description",
+    "dnp",
+];
 
 /// One CSV cell of a line. Built-ins: line, quantity, designators (ranges), designator_list,
 /// comment, footprint, lib_ref, description, value, manufacturer, mpn, supplier_pn, dnp,
@@ -279,22 +371,53 @@ pub fn column(l: &BomLine, name: &str) -> String {
         "manufacturer" => l.manufacturer.clone(),
         "mpn" => l.mpn.clone(),
         "supplier_pn" => l.supplier_pn.clone(),
-        "dnp" => if l.dnp { "DNP".into() } else { String::new() },
-        "excluded" => if l.excluded { "excluded".into() } else { String::new() },
-        _ => l.parameters.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.clone()).unwrap_or_default(),
+        "dnp" => {
+            if l.dnp {
+                "DNP".into()
+            } else {
+                String::new()
+            }
+        }
+        "excluded" => {
+            if l.excluded {
+                "excluded".into()
+            } else {
+                String::new()
+            }
+        }
+        _ => l
+            .parameters
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default(),
     }
 }
 
 fn csv_escape(s: &str) -> String {
-    if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_owned() }
+    if s.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_owned()
+    }
 }
 
 /// CSV with the given columns (header = column names as given).
 pub fn to_csv_columns(bom: &Bom, columns: &[String]) -> String {
-    let mut out = columns.iter().map(|c| csv_escape(c)).collect::<Vec<_>>().join(",");
+    let mut out = columns
+        .iter()
+        .map(|c| csv_escape(c))
+        .collect::<Vec<_>>()
+        .join(",");
     out.push('\n');
     for l in &bom.lines {
-        out.push_str(&columns.iter().map(|c| csv_escape(&column(l, c))).collect::<Vec<_>>().join(","));
+        out.push_str(
+            &columns
+                .iter()
+                .map(|c| csv_escape(&column(l, c)))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
         out.push('\n');
     }
     out
@@ -303,7 +426,9 @@ pub fn to_csv_columns(bom: &Bom, columns: &[String]) -> String {
 /// CSV with a fixed, spreadsheet-friendly column set.
 pub fn to_csv(bom: &Bom) -> String {
     let esc = |s: &str| csv_escape(s);
-    let mut out = String::from("Line,Quantity,Designators,Comment,Footprint,Value,Manufacturer,MPN,Supplier PN,Description,DNP\n");
+    let mut out = String::from(
+        "Line,Quantity,Designators,Comment,Footprint,Value,Manufacturer,MPN,Supplier PN,Description,DNP\n",
+    );
     for l in &bom.lines {
         let row = [
             l.line.to_string(),
@@ -330,14 +455,24 @@ mod tests {
     use altium_doc::project::Variation;
 
     fn part(d: &str, c: &str, fp: &str) -> Part {
-        Part { designator: d.into(), comment: c.into(), footprint: fp.into(), ..Default::default() }
+        Part {
+            designator: d.into(),
+            comment: c.into(),
+            footprint: fp.into(),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn grouping_and_variant() {
         let design = Design {
             source: "schematic".into(),
-            parts: vec![part("R2", "10k", "0603"), part("R1", "10k", "0603"), part("C1", "100n", "0402"), part("R3", "1k", "0603")],
+            parts: vec![
+                part("R2", "10k", "0603"),
+                part("R1", "10k", "0603"),
+                part("C1", "100n", "0402"),
+                part("R3", "1k", "0603"),
+            ],
             ..Default::default()
         };
         let v = Variant {
@@ -354,23 +489,46 @@ mod tests {
                 raw: Default::default(),
             }],
             parameters: Default::default(),
-            param_variations: vec![[("Designator", "R2"), ("ParameterName", "Comment"), ("VariantValue", "22k")]
+            param_variations: vec![
+                [
+                    ("Designator", "R2"),
+                    ("ParameterName", "Comment"),
+                    ("VariantValue", "22k"),
+                ]
                 .into_iter()
                 .map(|(k, v)| (k.to_owned(), v.to_owned()))
-                .collect()],
+                .collect(),
+            ],
         };
-        let bom = build(&design, &BomOptions { variant: Some(v.clone()), ..Default::default() }).unwrap();
+        let bom = build(
+            &design,
+            &BomOptions {
+                variant: Some(v.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(bom.unique_lines, 3, "R2 became 22k");
         assert_eq!(bom.varied, ["R2"]);
         let mut v = v;
         v.param_variations.clear();
-        let bom = build(&design, &BomOptions { variant: Some(v), ..Default::default() }).unwrap();
+        let bom = build(
+            &design,
+            &BomOptions {
+                variant: Some(v),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(bom.unique_lines, 2);
         assert_eq!(bom.lines[1].designator_ranges, "R1, R2");
         assert_eq!(bom.dnp, ["R3"]);
         assert_eq!(bom.total_parts, 3);
         assert!(to_csv(&bom).contains("2,2,\"R1, R2\",10k,0603"));
-        let cols: Vec<String> = ["designator_list", "qty"].iter().map(|s| s.to_string()).collect();
+        let cols: Vec<String> = ["designator_list", "qty"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         assert!(to_csv_columns(&bom, &cols).contains("\"R1, R2\",2"));
     }
 }

@@ -30,7 +30,11 @@ pub struct StoredFile {
 impl StoredFile {
     /// Base file name without the Windows directory.
     pub fn base_name(&self) -> String {
-        self.name.rsplit(['\\', '/']).next().unwrap_or(&self.name).to_owned()
+        self.name
+            .rsplit(['\\', '/'])
+            .next()
+            .unwrap_or(&self.name)
+            .to_owned()
     }
 }
 
@@ -58,7 +62,9 @@ pub fn sniff(b: &[u8]) -> &'static str {
 pub fn parse(buf: &[u8], warnings: &mut Vec<String>) -> Vec<StoredFile> {
     let (recs, left) = split_records(buf);
     if left > 0 {
-        warnings.push(format!("Storage: {left} trailing bytes do not form a complete record"));
+        warnings.push(format!(
+            "Storage: {left} trailing bytes do not form a complete record"
+        ));
     }
     let mut out = Vec::new();
     for r in recs.iter().skip(1) {
@@ -66,7 +72,9 @@ pub fn parse(buf: &[u8], warnings: &mut Vec<String>) -> Vec<StoredFile> {
         let parsed = (|| -> altium_core::Result<(String, Vec<u8>)> {
             let tag = b.u8()?;
             if tag != 0xD0 {
-                return Err(altium_core::Error::parse(format!("storage record tag {tag:#x}, expected 0xd0")));
+                return Err(altium_core::Error::parse(format!(
+                    "storage record tag {tag:#x}, expected 0xd0"
+                )));
             }
             let name = b.pascal()?;
             let n = b.u32()? as usize;
@@ -75,14 +83,22 @@ pub fn parse(buf: &[u8], warnings: &mut Vec<String>) -> Vec<StoredFile> {
         match parsed {
             Ok((name, compressed)) => {
                 let mut data = Vec::new();
-                let ok = flate2::read::ZlibDecoder::new(compressed.as_slice()).read_to_end(&mut data).is_ok();
+                let ok = flate2::read::ZlibDecoder::new(compressed.as_slice())
+                    .read_to_end(&mut data)
+                    .is_ok();
                 if !ok {
-                    warnings.push(format!("Storage: {name:?} does not inflate as zlib; kept compressed"));
+                    warnings.push(format!(
+                        "Storage: {name:?} does not inflate as zlib; kept compressed"
+                    ));
                     data = compressed.clone();
                 }
                 out.push(StoredFile {
                     index: out.len(),
-                    format: if ok { sniff(&data).into() } else { "unknown".into() },
+                    format: if ok {
+                        sniff(&data).into()
+                    } else {
+                        "unknown".into()
+                    },
                     size: ok.then_some(data.len()),
                     compressed_size: compressed.len(),
                     name,
@@ -104,7 +120,9 @@ pub fn find<'a>(files: &'a [StoredFile], name: &str) -> Option<&'a StoredFile> {
         .or_else(|| files.iter().find(|f| f.name.ends_with(name)))
         .or_else(|| {
             let base = name.rsplit(['\\', '/']).next().unwrap_or(name);
-            files.iter().find(|f| f.base_name().eq_ignore_ascii_case(base))
+            files
+                .iter()
+                .find(|f| f.base_name().eq_ignore_ascii_case(base))
         })
 }
 
@@ -125,7 +143,14 @@ mod tests {
         data.extend(name);
         data.extend((comp.len() as u32).to_le_bytes());
         data.extend(&comp);
-        let buf = join_records(&[Record { kind: 0, data: b"|HEADER=Icon storage|WEIGHT=1\0".to_vec() }, Record { kind: 1, data }]).unwrap();
+        let buf = join_records(&[
+            Record {
+                kind: 0,
+                data: b"|HEADER=Icon storage|WEIGHT=1\0".to_vec(),
+            },
+            Record { kind: 1, data },
+        ])
+        .unwrap();
         let mut w = vec![];
         let files = parse(&buf, &mut w);
         assert!(w.is_empty(), "{w:?}");

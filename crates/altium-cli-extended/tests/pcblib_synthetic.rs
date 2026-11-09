@@ -9,11 +9,25 @@ fn case_only_rename_and_name_encoding() {
     support::pcblib(&file);
     let f = s(&file);
     let original = std::fs::read(&file).unwrap();
-    let e = err(&["pcblib", "rename", &f, "A", "Ω-8", "--codepage", "windows-1252"], "USAGE");
+    let e = err(
+        &[
+            "pcblib",
+            "rename",
+            &f,
+            "A",
+            "Ω-8",
+            "--codepage",
+            "windows-1252",
+        ],
+        "USAGE",
+    );
     assert!(e["error"]["hint"].as_str().unwrap().contains("--codepage"));
     assert_eq!(std::fs::read(&file).unwrap(), original);
     ok(&["pcblib", "rename", &f, "A", "a"]);
-    assert_eq!(ok(&["pcblib", "info", &f])["names"], serde_json::json!(["a"]));
+    assert_eq!(
+        ok(&["pcblib", "info", &f])["names"],
+        serde_json::json!(["a"])
+    );
     let show = ok(&["pcblib", "show", &f, "a"]);
     assert_eq!(show["footprint"]["storage"], "A");
     let no_op = ok(&["pcblib", "rename", &f, "a", "a"]);
@@ -44,7 +58,15 @@ fn remove_and_parameter_rejections_without_fixtures() {
     }
     assert_eq!(std::fs::read(&file).unwrap(), original);
     assert!(!dir.join("L.PcbLib.bak").exists());
-    ok(&["pcblib", "set-param", &f, "A", "DESCRIPTION", "New", "--no-backup"]);
+    ok(&[
+        "pcblib",
+        "set-param",
+        &f,
+        "A",
+        "DESCRIPTION",
+        "New",
+        "--no-backup",
+    ]);
     let no_op = ok(&["pcblib", "set-param", &f, "A", "DESCRIPTION", "New"]);
     assert_eq!(no_op["footprints"], 1);
     let d = ok(&["pcblib", "remove", &f, "A", "--no-backup"]);
@@ -64,9 +86,15 @@ fn names_with_characters_a_storage_cannot_hold_map_to_underscores() {
     support::pcblib(&file);
     let f = s(&file);
     ok(&["pcblib", "rename", &f, "A", "A:B\\C!D"]);
-    assert_eq!(ok(&["pcblib", "show", &f, "A:B\\C!D"])["footprint"]["storage"], "A_B_C_D");
+    assert_eq!(
+        ok(&["pcblib", "show", &f, "A:B\\C!D"])["footprint"]["storage"],
+        "A_B_C_D"
+    );
     ok(&["pcblib", "copy", &f, &f, "A:B\\C!D", "--name", "X!Y"]);
-    assert_eq!(ok(&["pcblib", "show", &f, "X!Y"])["footprint"]["storage"], "X_Y");
+    assert_eq!(
+        ok(&["pcblib", "show", &f, "X!Y"])["footprint"]["storage"],
+        "X_Y"
+    );
     let (_, env) = run(&["pcblib", "info", &f]);
     assert_eq!(env["warnings"], serde_json::json!([]));
     std::fs::remove_dir_all(dir).unwrap();
@@ -82,7 +110,10 @@ fn read_only_library_is_refused_untouched() {
     let mut perms = std::fs::metadata(&file).unwrap().permissions();
     perms.set_readonly(true);
     std::fs::set_permissions(&file, perms.clone()).unwrap();
-    let e = err(&["pcblib", "set-param", &f, "A", "DESCRIPTION", "New"], "UNSAFE");
+    let e = err(
+        &["pcblib", "set-param", &f, "A", "DESCRIPTION", "New"],
+        "UNSAFE",
+    );
     assert!(e["error"]["hint"].as_str().unwrap().contains("lock"), "{e}");
     assert_eq!(std::fs::read(&file).unwrap(), original);
     assert!(std::fs::metadata(&file).unwrap().permissions().readonly());

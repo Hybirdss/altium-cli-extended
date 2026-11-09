@@ -61,7 +61,12 @@ impl ErrorCode {
     /// Shared categories across ace and kce; numeric exits are tool-specific.
     pub fn category(self) -> &'static str {
         match self {
-            Self::Usage | Self::FileNotFound | Self::WrongFileType | Self::NotFound | Self::Ambiguous | Self::UnsupportedNative => "input",
+            Self::Usage
+            | Self::FileNotFound
+            | Self::WrongFileType
+            | Self::NotFound
+            | Self::Ambiguous
+            | Self::UnsupportedNative => "input",
             Self::Parse | Self::GateFailed => "design",
             Self::Unsafe => "validation",
             Self::DesignerUnavailable | Self::Io => "environment",
@@ -112,7 +117,13 @@ pub struct Error {
 
 impl Error {
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
-        Error { code, category: code.category(), message: message.into(), hint: None, details: None }
+        Error {
+            code,
+            category: code.category(),
+            message: message.into(),
+            hint: None,
+            details: None,
+        }
     }
     pub fn hint(mut self, hint: impl Into<String>) -> Self {
         self.hint = Some(hint.into());

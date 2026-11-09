@@ -57,15 +57,28 @@ pub fn mode_name(v: i64) -> &'static str {
 
 /// Options for net naming read from a project.
 pub fn net_options(p: &Project) -> NetOptions {
-    let flag = |k: &str, d: bool| p.design(k).map(|v| v.trim() == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(d);
+    let flag = |k: &str, d: bool| {
+        p.design(k)
+            .map(|v| v.trim() == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(d)
+    };
     let d = NetOptions::default();
     NetOptions {
-        power_port_names_take_priority: flag("PowerPortNamesTakePriority", d.power_port_names_take_priority),
+        power_port_names_take_priority: flag(
+            "PowerPortNamesTakePriority",
+            d.power_port_names_take_priority,
+        ),
         allow_port_net_names: flag("AllowPortNetNames", d.allow_port_net_names),
         allow_sheet_entry_net_names: flag("AllowSheetEntryNetNames", d.allow_sheet_entry_net_names),
         single_pin_nets: flag("NetlistSinglePinNets", d.single_pin_nets),
-        append_sheet_number_to_local_nets: flag("AppendSheetNumberToLocalNets", d.append_sheet_number_to_local_nets),
-        higher_level_names_take_priority: flag("NameNetsHierarchically", d.higher_level_names_take_priority),
+        append_sheet_number_to_local_nets: flag(
+            "AppendSheetNumberToLocalNets",
+            d.append_sheet_number_to_local_nets,
+        ),
+        higher_level_names_take_priority: flag(
+            "NameNetsHierarchically",
+            d.higher_level_names_take_priority,
+        ),
     }
 }
 
@@ -143,8 +156,16 @@ pub fn load_sheets(project: &Project) -> Result<ProjectSheets> {
     // Children referenced by sheet symbols but not listed in the project.
     let mut i = 0;
     while i < docs.len() {
-        let dir = docs[i].path.parent().map(Path::to_path_buf).unwrap_or_default();
-        let files: Vec<String> = docs[i].sheet_symbols.iter().map(|s| s.file_name.clone()).collect();
+        let dir = docs[i]
+            .path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_default();
+        let files: Vec<String> = docs[i]
+            .sheet_symbols
+            .iter()
+            .map(|s| s.file_name.clone())
+            .collect();
         for f in files {
             if f.is_empty() {
                 continue;
@@ -154,14 +175,20 @@ pub fn load_sheets(project: &Project) -> Result<ProjectSheets> {
                 && seen.insert(key(&p))
                 && p.exists()
             {
-                warnings.push(format!("{f} is placed by a sheet symbol but is not in the project; loaded anyway"));
+                warnings.push(format!(
+                    "{f} is placed by a sheet symbol but is not in the project; loaded anyway"
+                ));
                 docs.push(doc::load(&p)?);
                 in_project.push(false);
             }
         }
         i += 1;
     }
-    Ok(ProjectSheets { docs, in_project, warnings })
+    Ok(ProjectSheets {
+        docs,
+        in_project,
+        warnings,
+    })
 }
 
 /// Resolve a sheet symbol's file name: an already loaded sheet with the same file name, else
@@ -172,14 +199,21 @@ fn resolve_child(parent_dir: &Path, file: &str, docs: &[SchDoc]) -> Option<PathB
     if rel.exists() {
         return Some(rel);
     }
-    if let Some(d) = docs.iter().find(|d| d.file_name().eq_ignore_ascii_case(base)) {
+    if let Some(d) = docs
+        .iter()
+        .find(|d| d.file_name().eq_ignore_ascii_case(base))
+    {
         return Some(d.path.clone());
     }
     Some(rel)
 }
 
 fn child_index(sheets: &ProjectSheets, parent: usize, file: &str) -> Option<usize> {
-    let dir = sheets.docs[parent].path.parent().map(Path::to_path_buf).unwrap_or_default();
+    let dir = sheets.docs[parent]
+        .path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
     let p = resolve_child(&dir, file, &sheets.docs)?;
     let k = key(&p);
     sheets.docs.iter().position(|d| key(&d.path) == k)
@@ -187,7 +221,10 @@ fn child_index(sheets: &ProjectSheets, parent: usize, file: &str) -> Option<usiz
 
 /// Resolve the effective scope for a project.
 pub fn scope(project: &Project, sheets: &ProjectSheets) -> (String, Scope) {
-    let raw = project.design("HierarchyMode").and_then(|v| v.trim().parse::<i64>().ok()).unwrap_or(0);
+    let raw = project
+        .design("HierarchyMode")
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .unwrap_or(0);
     let configured = mode_name(raw).to_owned();
     let s = match raw {
         1 => Scope::Flat,
@@ -195,7 +232,10 @@ pub fn scope(project: &Project, sheets: &ProjectSheets) -> (String, Scope) {
         3 => Scope::Global,
         4 => Scope::StrictHierarchical,
         _ => {
-            let entries = sheets.docs.iter().any(|d| d.sheet_symbols.iter().any(|s| !s.entries.is_empty()));
+            let entries = sheets
+                .docs
+                .iter()
+                .any(|d| d.sheet_symbols.iter().any(|s| !s.entries.is_empty()));
             let ports = sheets.docs.iter().any(|d| !d.ports.is_empty());
             if entries {
                 Scope::Hierarchical
@@ -241,12 +281,21 @@ pub fn hierarchy(project: &Project) -> Result<Hierarchy> {
         for s in &d.sheet_symbols {
             match child_index(sheets, i, &s.file_name) {
                 Some(c) if stack.contains(&c) => {
-                    warnings.push(format!("sheet hierarchy cycle: {} places {}", d.file_name(), s.file_name));
+                    warnings.push(format!(
+                        "sheet hierarchy cycle: {} places {}",
+                        d.file_name(),
+                        s.file_name
+                    ));
                 }
                 Some(c) => children.push(node(sheets, referenced, c, Some(s), stack, warnings)),
                 None => {
                     let dir = d.path.parent().map(Path::to_path_buf).unwrap_or_default();
-                    warnings.push(format!("{}: sheet symbol {:?} points to missing {}", d.file_name(), s.sheet_name, s.file_name));
+                    warnings.push(format!(
+                        "{}: sheet symbol {:?} points to missing {}",
+                        d.file_name(),
+                        s.sheet_name,
+                        s.file_name
+                    ));
                     children.push(SheetNode {
                         file: s.file_name.clone(),
                         path: resolve_ci(&dir, &s.file_name),
@@ -279,17 +328,34 @@ pub fn hierarchy(project: &Project) -> Result<Hierarchy> {
     let mut roots = Vec::new();
     for i in 0..sheets.docs.len() {
         if !referenced.contains_key(&i) {
-            roots.push(node(&sheets, &referenced, i, None, &mut vec![], &mut warnings));
+            roots.push(node(
+                &sheets,
+                &referenced,
+                i,
+                None,
+                &mut vec![],
+                &mut warnings,
+            ));
         }
     }
     if roots.len() > 1 && matches!(sc, Scope::Hierarchical | Scope::StrictHierarchical) {
         warnings.push(format!(
             "{} root sheets in a hierarchical design: {}",
             roots.len(),
-            roots.iter().map(|r| r.file.as_str()).collect::<Vec<_>>().join(", ")
+            roots
+                .iter()
+                .map(|r| r.file.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
-    Ok(Hierarchy { configured_scope: configured, scope: sc, roots, repeated_sheets, warnings })
+    Ok(Hierarchy {
+        configured_scope: configured,
+        scope: sc,
+        roots,
+        repeated_sheets,
+        warnings,
+    })
 }
 
 /// One placement of a sheet in the design.
@@ -309,7 +375,11 @@ struct Channel {
 }
 
 fn channel_designator(format: &str, designator: &str, ch: &Channel) -> String {
-    let fmt = if format.trim().is_empty() { "$Component_$RoomName" } else { format };
+    let fmt = if format.trim().is_empty() {
+        "$Component_$RoomName"
+    } else {
+        format
+    };
     let alpha = super::records::part_letter(ch.index as i64);
     fmt.replace("$Component", designator)
         .replace("$RoomName", &ch.room)
@@ -321,7 +391,12 @@ fn instances(sheets: &ProjectSheets, sc: Scope, warnings: &mut Vec<String>) -> V
     let mut out = Vec::new();
     if matches!(sc, Scope::Flat | Scope::Global) {
         for i in 0..sheets.docs.len() {
-            out.push(Instance { doc: i, parent: None, depth: 0, channel: None });
+            out.push(Instance {
+                doc: i,
+                parent: None,
+                depth: 0,
+                channel: None,
+            });
         }
         return out;
     }
@@ -348,10 +423,17 @@ fn instances(sheets: &ProjectSheets, sc: Scope, warnings: &mut Vec<String>) -> V
         warnings: &mut Vec<String>,
     ) {
         let me = out.len();
-        out.push(Instance { doc, parent, depth, channel });
+        out.push(Instance {
+            doc,
+            parent,
+            depth,
+            channel,
+        });
         stack.push(doc);
         for (si, s) in sheets.docs[doc].sheet_symbols.iter().enumerate() {
-            let Some(c) = child_index(sheets, doc, &s.file_name) else { continue };
+            let Some(c) = child_index(sheets, doc, &s.file_name) else {
+                continue;
+            };
             if stack.contains(&c) {
                 continue;
             }
@@ -364,31 +446,75 @@ fn instances(sheets: &ProjectSheets, sc: Scope, warnings: &mut Vec<String>) -> V
                     r.last
                 ));
                 (r.first..=r.last.max(r.first))
-                    .map(|i| Some(Channel { room: format!("{}{}", r.name, i), index: i.max(0) as usize }))
+                    .map(|i| {
+                        Some(Channel {
+                            room: format!("{}{}", r.name, i),
+                            index: i.max(0) as usize,
+                        })
+                    })
                     .collect()
             } else if referenced.get(&c).copied().unwrap_or(0) > 1 {
                 let n = placed.entry(c).or_default();
                 *n += 1;
-                vec![Some(Channel { room: s.sheet_name.clone(), index: *n })]
+                vec![Some(Channel {
+                    room: s.sheet_name.clone(),
+                    index: *n,
+                })]
             } else {
                 vec![None]
             };
             for ch in channels {
-                walk(sheets, referenced, c, Some((me, si)), depth + 1, ch, stack, out, placed, warnings);
+                walk(
+                    sheets,
+                    referenced,
+                    c,
+                    Some((me, si)),
+                    depth + 1,
+                    ch,
+                    stack,
+                    out,
+                    placed,
+                    warnings,
+                );
             }
         }
         stack.pop();
     }
     for i in 0..sheets.docs.len() {
         if !referenced.contains_key(&i) {
-            walk(sheets, &referenced, i, None, 0, None, &mut vec![], &mut out, &mut placed_count, warnings);
+            walk(
+                sheets,
+                &referenced,
+                i,
+                None,
+                0,
+                None,
+                &mut vec![],
+                &mut out,
+                &mut placed_count,
+                warnings,
+            );
         }
     }
     // Sheets only reachable through a cycle.
     for i in 0..sheets.docs.len() {
         if !out.iter().any(|x| x.doc == i) {
-            warnings.push(format!("{} is not reachable from a root sheet; treated as a root", sheets.docs[i].file_name()));
-            walk(sheets, &referenced, i, None, 0, None, &mut vec![], &mut out, &mut placed_count, warnings);
+            warnings.push(format!(
+                "{} is not reachable from a root sheet; treated as a root",
+                sheets.docs[i].file_name()
+            ));
+            walk(
+                sheets,
+                &referenced,
+                i,
+                None,
+                0,
+                None,
+                &mut vec![],
+                &mut out,
+                &mut placed_count,
+                warnings,
+            );
         }
     }
     out
@@ -423,7 +549,9 @@ pub struct ProjectNetlist {
 impl ProjectNetlist {
     /// Project net name of a pin of `sheet`.
     pub fn pin_net(&self, sheet: &Path, pin_record: usize) -> Option<&str> {
-        self.pin_nets.get(&(canonical(sheet), pin_record)).map(String::as_str)
+        self.pin_nets
+            .get(&(canonical(sheet), pin_record))
+            .map(String::as_str)
     }
 }
 
@@ -439,7 +567,9 @@ pub fn netlist(project: &Project) -> Result<ProjectNetlist> {
     }
     let graphs: Vec<SheetGraph> = sheets.docs.iter().map(connect::graph).collect();
     let inst = instances(&sheets, sc, &mut warnings);
-    let channel_fmt = project.design("ChannelDesignatorFormatString").unwrap_or_default();
+    let channel_fmt = project
+        .design("ChannelDesignatorFormatString")
+        .unwrap_or_default();
     if inst.iter().any(|i| i.channel.is_some()) {
         warnings.push(format!(
             "multi-channel sheets: designators renamed with {:?}; compare with Altium's compiled names",
@@ -556,7 +686,9 @@ pub fn netlist(project: &Project) -> Result<ProjectNetlist> {
                         continue;
                     }
                     for m in connect::expand_bus(&d.ports[p].name).unwrap_or_default() {
-                        if let (Some(&a), Some(&b)) = (labels[pi].get(&upper(&m)), labels[ii].get(&upper(&m))) {
+                        if let (Some(&a), Some(&b)) =
+                            (labels[pi].get(&upper(&m)), labels[ii].get(&upper(&m)))
+                        {
                             uf.union(a, b);
                         }
                     }
@@ -602,14 +734,27 @@ pub fn netlist(project: &Project) -> Result<ProjectNetlist> {
             let x = &inst[ii];
             let d = &sheets.docs[x.doc];
             let grp = &graphs[x.doc].groups[g];
-            cands.extend(connect::candidates(d, grp, &opts, if opts.higher_level_names_take_priority { x.depth } else { 0 }));
+            cands.extend(connect::candidates(
+                d,
+                grp,
+                &opts,
+                if opts.higher_level_names_take_priority {
+                    x.depth
+                } else {
+                    0
+                },
+            ));
             has_port |= !grp.ports.is_empty();
             for &(c, p) in &grp.pins {
                 let comp = &d.components[c];
                 let pin = &comp.pins[p];
                 // Nodes carry footprint pad numbers (pin map applied) so they match the PCB.
                 for pad in comp.pads_for(&pin.designator) {
-                    nodes.push(Node { designator: designator(ii, &comp.designator), pin: pad, pin_name: pin.name.clone() });
+                    nodes.push(Node {
+                        designator: designator(ii, &comp.designator),
+                        pin: pad,
+                        pin_name: pin.name.clone(),
+                    });
                 }
             }
             let f = d.file_name();
@@ -631,8 +776,15 @@ pub fn netlist(project: &Project) -> Result<ProjectNetlist> {
         let (mut name, auto, source) = match connect::pick(&cands) {
             Some(c) => (c.name.clone(), false, c.source.to_owned()),
             None => {
-                let pairs: Vec<(String, String)> = nodes.iter().map(|n| (n.designator.clone(), n.pin.clone())).collect();
-                (connect::auto_name(&pairs).unwrap_or_default(), true, "pin".to_owned())
+                let pairs: Vec<(String, String)> = nodes
+                    .iter()
+                    .map(|n| (n.designator.clone(), n.pin.clone()))
+                    .collect();
+                (
+                    connect::auto_name(&pairs).unwrap_or_default(),
+                    true,
+                    "pin".to_owned(),
+                )
             }
         };
         if opts.append_sheet_number_to_local_nets && source == "net-label" {
@@ -640,12 +792,20 @@ pub fn netlist(project: &Project) -> Result<ProjectNetlist> {
             if insts.len() == 1 {
                 let ii = *insts.iter().next().unwrap();
                 let d = &sheets.docs[inst[ii].doc];
-                if let Some(n) = d.doc_param("SheetNumber").map(|p| p.value.clone()).filter(|v| !v.is_empty() && v != "*") {
+                if let Some(n) = d
+                    .doc_param("SheetNumber")
+                    .map(|p| p.value.clone())
+                    .filter(|v| !v.is_empty() && v != "*")
+                {
                     name = format!("{name}_{n}");
                 }
             }
         }
-        let mut other: Vec<String> = cands.iter().map(|c| c.name.clone()).filter(|n| !n.eq_ignore_ascii_case(&name)).collect();
+        let mut other: Vec<String> = cands
+            .iter()
+            .map(|c| c.name.clone())
+            .filter(|n| !n.eq_ignore_ascii_case(&name))
+            .collect();
         other.sort_by_key(|s| natural_key(s));
         other.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
         if nodes.len() == 1 && auto {
@@ -658,10 +818,19 @@ pub fn netlist(project: &Project) -> Result<ProjectNetlist> {
             let x = &inst[ii];
             let d = &sheets.docs[x.doc];
             for &(c, p) in &graphs[x.doc].groups[g].pins {
-                pin_nets.entry((canonical(&d.path), d.components[c].pins[p].index)).or_insert_with(|| name.clone());
+                pin_nets
+                    .entry((canonical(&d.path), d.components[c].pins[p].index))
+                    .or_insert_with(|| name.clone());
             }
         }
-        nets.push(ProjectNet { name, auto_named: auto, name_source: source, nodes, sheets: sheet_files, other_names: other });
+        nets.push(ProjectNet {
+            name,
+            auto_named: auto,
+            name_source: source,
+            nodes,
+            sheets: sheet_files,
+            other_names: other,
+        });
     }
     if single > 0 && !opts.single_pin_nets {
         warnings.push(format!("{single} unnamed single-pin net(s) left out (project option NetlistSinglePinNets is off)"));
@@ -671,9 +840,21 @@ pub fn netlist(project: &Project) -> Result<ProjectNetlist> {
     for n in &nets {
         *by_name.entry(n.name.to_uppercase()).or_default() += 1;
     }
-    let dup: Vec<&String> = by_name.iter().filter(|(_, c)| **c > 1).map(|(n, _)| n).collect();
+    let dup: Vec<&String> = by_name
+        .iter()
+        .filter(|(_, c)| **c > 1)
+        .map(|(n, _)| n)
+        .collect();
     if !dup.is_empty() {
-        warnings.push(format!("{} net name(s) are used by more than one unconnected net: {}", dup.len(), dup.iter().take(10).map(|s| s.as_str()).collect::<Vec<_>>().join(", ")));
+        warnings.push(format!(
+            "{} net name(s) are used by more than one unconnected net: {}",
+            dup.len(),
+            dup.iter()
+                .take(10)
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
     }
     nets.sort_by_key(|n| natural_key(&n.name));
 
@@ -682,11 +863,23 @@ pub fn netlist(project: &Project) -> Result<ProjectNetlist> {
     for (ii, x) in inst.iter().enumerate() {
         let d = &sheets.docs[x.doc];
         for c in &d.components {
-            super::merge_part(&mut parts, c, &designator(ii, &c.designator), &d.file_name());
+            super::merge_part(
+                &mut parts,
+                c,
+                &designator(ii, &c.designator),
+                &d.file_name(),
+            );
         }
     }
     parts.sort_by_key(|p| natural_key(&p.designator));
-    Ok(ProjectNetlist { scope: sc, configured_scope: configured, nets, parts, warnings, pin_nets })
+    Ok(ProjectNetlist {
+        scope: sc,
+        configured_scope: configured,
+        nets,
+        parts,
+        warnings,
+        pin_nets,
+    })
 }
 
 /// `model::Design` for a whole project (source `schematic`).
@@ -698,7 +891,12 @@ pub fn project_design(project: &Project) -> Result<Design> {
         nets: n
             .nets
             .into_iter()
-            .map(|p| Net { name: p.name, nodes: p.nodes, auto_named: p.auto_named, name_source: p.name_source })
+            .map(|p| Net {
+                name: p.name,
+                nodes: p.nodes,
+                auto_named: p.auto_named,
+                name_source: p.name_source,
+            })
             .collect(),
         warnings: n.warnings,
     })
@@ -715,19 +913,39 @@ pub struct LocatedComponent {
     pub footprint: Option<String>,
 }
 
-pub fn locate(project: &Project, designators: &[String]) -> Result<(Vec<LocatedComponent>, Vec<String>)> {
+pub fn locate(
+    project: &Project,
+    designators: &[String],
+) -> Result<(Vec<LocatedComponent>, Vec<String>)> {
     let mut items = vec![];
-    let mut warnings: Vec<_> = project.documents.iter().filter(|d| !d.generated && !d.exists)
-        .map(|d| format!("project document {} does not exist; lookup may be partial", d.rel)).collect();
+    let mut warnings: Vec<_> = project
+        .documents
+        .iter()
+        .filter(|d| !d.generated && !d.exists)
+        .map(|d| {
+            format!(
+                "project document {} does not exist; lookup may be partial",
+                d.rel
+            )
+        })
+        .collect();
     let mut available = std::collections::BTreeSet::new();
     for path in project.schematics() {
         let doc = super::load(&path)?;
         warnings.extend(doc.warnings);
         for c in doc.components {
             available.insert(c.designator.clone());
-            if designators.iter().any(|q| c.designator.eq_ignore_ascii_case(q) || c.display_designator.eq_ignore_ascii_case(q)) {
-                items.push(LocatedComponent { designator:c.display_designator, sheet:path.clone(), index:c.index,
-                    unique_id:c.unique_id, comment:c.comment, footprint:c.footprint });
+            if designators.iter().any(|q| {
+                c.designator.eq_ignore_ascii_case(q) || c.display_designator.eq_ignore_ascii_case(q)
+            }) {
+                items.push(LocatedComponent {
+                    designator: c.display_designator,
+                    sheet: path.clone(),
+                    index: c.index,
+                    unique_id: c.unique_id,
+                    comment: c.comment,
+                    footprint: c.footprint,
+                });
             }
         }
     }
@@ -738,8 +956,15 @@ pub fn locate(project: &Project, designators: &[String]) -> Result<(Vec<LocatedC
             .hint("read error.details.similar, or list parts with `ace bom PROJECT --group-by designator`"));
     }
     for q in designators {
-        if !items.iter().any(|c| c.designator.eq_ignore_ascii_case(q) || c.designator.trim_end_matches(|c: char| c.is_ascii_alphabetic()).eq_ignore_ascii_case(q)) {
-            warnings.push(format!("no component matched {q}; inspect the project's BOM"));
+        if !items.iter().any(|c| {
+            c.designator.eq_ignore_ascii_case(q)
+                || c.designator
+                    .trim_end_matches(|c: char| c.is_ascii_alphabetic())
+                    .eq_ignore_ascii_case(q)
+        }) {
+            warnings.push(format!(
+                "no component matched {q}; inspect the project's BOM"
+            ));
         }
     }
     Ok((items, warnings))
@@ -751,9 +976,18 @@ mod tests {
 
     #[test]
     fn channel_names() {
-        let ch = Channel { room: "CH".into(), index: 2 };
-        assert_eq!(channel_designator("$Component_$RoomName", "R1", &ch), "R1_CH");
-        assert_eq!(channel_designator("$Component$ChannelAlpha", "R1", &ch), "R1B");
+        let ch = Channel {
+            room: "CH".into(),
+            index: 2,
+        };
+        assert_eq!(
+            channel_designator("$Component_$RoomName", "R1", &ch),
+            "R1_CH"
+        );
+        assert_eq!(
+            channel_designator("$Component$ChannelAlpha", "R1", &ch),
+            "R1B"
+        );
         assert_eq!(mode_name(0), "automatic");
     }
 }

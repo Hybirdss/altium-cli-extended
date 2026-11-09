@@ -10,10 +10,10 @@ use std::fmt::Write as _;
 
 use altium_core::units::{Coord, PER_MIL};
 
+use super::PcbDoc;
 use super::geom::{BBoxAcc, Vertex, ccw_sweep, flatten, rotate};
 use super::layer::{Layer, LayerKind};
 use super::prim::{Arc, Fill, Pad, Region, Text, Track, Via};
-use super::PcbDoc;
 
 #[derive(Debug, Clone, Default)]
 pub struct Options {
@@ -90,29 +90,69 @@ fn f(v: f64) -> String {
 }
 
 fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn path_of(xf: &Xf, vs: &[Vertex], out: &mut String) {
     let (pts, _) = flatten(vs, true);
     for (i, p) in pts.iter().enumerate() {
-        let _ = write!(out, "{}{} {} ", if i == 0 { "M" } else { "L" }, f(xf.xf(p.0)), f(xf.yf(p.1)));
+        let _ = write!(
+            out,
+            "{}{} {} ",
+            if i == 0 { "M" } else { "L" },
+            f(xf.xf(p.0)),
+            f(xf.yf(p.1))
+        );
     }
     out.push('Z');
 }
 
 #[allow(clippy::too_many_arguments)]
-fn pad_shape(xf: &Xf, cx: i64, cy: i64, shape: &str, sx: i64, sy: i64, rot: f64, cr: Option<u8>, fill: &str) -> String {
+fn pad_shape(
+    xf: &Xf,
+    cx: i64,
+    cy: i64,
+    shape: &str,
+    sx: i64,
+    sy: i64,
+    rot: f64,
+    cr: Option<u8>,
+    fill: &str,
+) -> String {
     let (x, y) = (xf.x(cx), xf.y(cy));
     let (w, h) = (sx as f64 / PER_MIL, sy as f64 / PER_MIL);
-    let tr = if rot != 0.0 { format!(" transform=\"rotate({} {} {})\"", f(-rot), f(x), f(y)) } else { String::new() };
+    let tr = if rot != 0.0 {
+        format!(" transform=\"rotate({} {} {})\"", f(-rot), f(x), f(y))
+    } else {
+        String::new()
+    };
     match shape {
-        "round" if (w - h).abs() < 1e-6 => format!("<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{fill}\"/>", f(x), f(y), f(w / 2.0)),
+        "round" if (w - h).abs() < 1e-6 => format!(
+            "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{fill}\"/>",
+            f(x),
+            f(y),
+            f(w / 2.0)
+        ),
         "octagonal" => {
             let c = w.min(h) / 4.0;
             let (l, r, t, b) = (x - w / 2.0, x + w / 2.0, y - h / 2.0, y + h / 2.0);
-            let pts = [(l + c, t), (r - c, t), (r, t + c), (r, b - c), (r - c, b), (l + c, b), (l, b - c), (l, t + c)];
-            let p: Vec<String> = pts.iter().map(|(a, b)| format!("{},{}", f(*a), f(*b))).collect();
+            let pts = [
+                (l + c, t),
+                (r - c, t),
+                (r, t + c),
+                (r, b - c),
+                (r - c, b),
+                (l + c, b),
+                (l, b - c),
+                (l, t + c),
+            ];
+            let p: Vec<String> = pts
+                .iter()
+                .map(|(a, b)| format!("{},{}", f(*a), f(*b)))
+                .collect();
             format!("<polygon points=\"{}\" fill=\"{fill}\"{tr}/>", p.join(" "))
         }
         _ => {
@@ -127,7 +167,11 @@ fn pad_shape(xf: &Xf, cx: i64, cy: i64, shape: &str, sx: i64, sy: i64, rot: f64,
                 f(y - h / 2.0),
                 f(w),
                 f(h),
-                if rx > 0.0 { format!(" rx=\"{}\"", f(rx)) } else { String::new() }
+                if rx > 0.0 {
+                    format!(" rx=\"{}\"", f(rx))
+                } else {
+                    String::new()
+                }
             )
         }
     }
@@ -135,20 +179,44 @@ fn pad_shape(xf: &Xf, cx: i64, cy: i64, shape: &str, sx: i64, sy: i64, rot: f64,
 
 fn hole(xf: &Xf, p: &Pad) -> Option<String> {
     let d = p.hole_size?.0;
-    let (cx, cy) = (p.x.0 + p.hole_offset.map(|o| o.x.0).unwrap_or(0), p.y.0 + p.hole_offset.map(|o| o.y.0).unwrap_or(0));
+    let (cx, cy) = (
+        p.x.0 + p.hole_offset.map(|o| o.x.0).unwrap_or(0),
+        p.y.0 + p.hole_offset.map(|o| o.y.0).unwrap_or(0),
+    );
     if let (Some("slot"), Some(len)) = (p.hole_shape, p.slot_length) {
         let rot = p.rotation + p.slot_rotation.unwrap_or(0.0);
-        return Some(pad_shape(xf, cx, cy, "round", len.0.max(d), d, rot, None, "#ffffff"));
+        return Some(pad_shape(
+            xf,
+            cx,
+            cy,
+            "round",
+            len.0.max(d),
+            d,
+            rot,
+            None,
+            "#ffffff",
+        ));
     }
-    let shape = if p.hole_shape == Some("square") { "rectangular" } else { "round" };
-    Some(pad_shape(xf, cx, cy, shape, d, d, p.rotation, None, "#ffffff"))
+    let shape = if p.hole_shape == Some("square") {
+        "rectangular"
+    } else {
+        "round"
+    };
+    Some(pad_shape(
+        xf, cx, cy, shape, d, d, p.rotation, None, "#ffffff",
+    ))
 }
 
 /// Render a scene. `layers` empty = defaults.
 pub fn render(scene: &Scene, opts: &Options) -> Rendered {
     let mut layers: Vec<Layer> = if opts.layers.is_empty() {
         let mut v = scene.copper.clone();
-        v.extend([Layer::TOP_OVERLAY, Layer::BOTTOM_OVERLAY, Layer::KEEPOUT, Layer::MULTI]);
+        v.extend([
+            Layer::TOP_OVERLAY,
+            Layer::BOTTOM_OVERLAY,
+            Layer::KEEPOUT,
+            Layer::MULTI,
+        ]);
         v
     } else {
         opts.layers.clone()
@@ -195,10 +263,11 @@ pub fn render(scene: &Scene, opts: &Options) -> Rendered {
     }
     for r in scene.regions.iter().filter(|_| !has_outline) {
         if on(r.layer)
-            && let Some(b) = r.bbox {
-                acc.add(b.min.x.0, b.min.y.0);
-                acc.add(b.max.x.0, b.max.y.0);
-            }
+            && let Some(b) = r.bbox
+        {
+            acc.add(b.min.x.0, b.min.y.0);
+            acc.add(b.max.x.0, b.max.y.0);
+        }
     }
     for t in scene.texts.iter().filter(|_| !has_outline) {
         if on(t.layer) {
@@ -210,7 +279,10 @@ pub fn render(scene: &Scene, opts: &Options) -> Rendered {
         acc.add(10_000, 10_000);
     }
     let margin = ((acc.hi.0 - acc.lo.0).max(acc.hi.1 - acc.lo.1) / 40).max(50_000);
-    let xf = Xf { minx: (acc.lo.0 - margin) as f64, maxy: (acc.hi.1 + margin) as f64 };
+    let xf = Xf {
+        minx: (acc.lo.0 - margin) as f64,
+        maxy: (acc.hi.1 + margin) as f64,
+    };
     let w = (acc.hi.0 - acc.lo.0 + 2 * margin) as f64 / PER_MIL;
     let h = (acc.hi.1 - acc.lo.1 + 2 * margin) as f64 / PER_MIL;
 
@@ -235,11 +307,24 @@ pub fn render(scene: &Scene, opts: &Options) -> Rendered {
             d.push(' ');
             path_of(&xf, hole, &mut d);
         }
-        let op = if r.keepout || r.kind != "copper" { " fill-opacity=\"0.35\"" } else { "" };
-        push(r.layer, format!("<path d=\"{d}\" fill-rule=\"evenodd\" fill=\"{}\"{op}/>", color(r.layer)));
+        let op = if r.keepout || r.kind != "copper" {
+            " fill-opacity=\"0.35\""
+        } else {
+            ""
+        };
+        push(
+            r.layer,
+            format!(
+                "<path d=\"{d}\" fill-rule=\"evenodd\" fill=\"{}\"{op}/>",
+                color(r.layer)
+            ),
+        );
     }
     for fl in &scene.fills {
-        let (cx, cy) = ((fl.corner1.x.0 + fl.corner2.x.0) as f64 / 2.0, (fl.corner1.y.0 + fl.corner2.y.0) as f64 / 2.0);
+        let (cx, cy) = (
+            (fl.corner1.x.0 + fl.corner2.x.0) as f64 / 2.0,
+            (fl.corner1.y.0 + fl.corner2.y.0) as f64 / 2.0,
+        );
         let corners = [
             (fl.corner1.x.0, fl.corner1.y.0),
             (fl.corner2.x.0, fl.corner1.y.0),
@@ -253,7 +338,14 @@ pub fn render(scene: &Scene, opts: &Options) -> Rendered {
                 format!("{},{}", f(xf.xf(a)), f(xf.yf(b)))
             })
             .collect();
-        push(fl.layer, format!("<polygon points=\"{}\" fill=\"{}\"/>", p.join(" "), color(fl.layer)));
+        push(
+            fl.layer,
+            format!(
+                "<polygon points=\"{}\" fill=\"{}\"/>",
+                p.join(" "),
+                color(fl.layer)
+            ),
+        );
     }
     for t in &scene.tracks {
         push(
@@ -299,7 +391,16 @@ pub fn render(scene: &Scene, opts: &Options) -> Rendered {
     }
     for p in &scene.pads {
         let draw_on: Vec<Layer> = if p.layer == Layer::MULTI {
-            if on(Layer::MULTI) { vec![Layer::MULTI] } else { layers.iter().copied().filter(|l| l.is_copper()).take(1).collect() }
+            if on(Layer::MULTI) {
+                vec![Layer::MULTI]
+            } else {
+                layers
+                    .iter()
+                    .copied()
+                    .filter(|l| l.is_copper())
+                    .take(1)
+                    .collect()
+            }
         } else {
             vec![p.layer]
         };
@@ -308,7 +409,17 @@ pub fn render(scene: &Scene, opts: &Options) -> Rendered {
                 (Layer::BOTTOM, Some(s), Some(z)) => (s.as_str(), z),
                 _ => (p.shape.as_str(), p.size),
             };
-            let mut s = pad_shape(&xf, p.x.0, p.y.0, shape, size.x.0, size.y.0, p.rotation, p.corner_radius_percent, color(l));
+            let mut s = pad_shape(
+                &xf,
+                p.x.0,
+                p.y.0,
+                shape,
+                size.x.0,
+                size.y.0,
+                p.rotation,
+                p.corner_radius_percent,
+                color(l),
+            );
             if let Some(hs) = hole(&xf, p) {
                 s.push_str(&hs);
             }
@@ -316,7 +427,11 @@ pub fn render(scene: &Scene, opts: &Options) -> Rendered {
         }
     }
     for v in &scene.vias {
-        let l = if on(Layer::MULTI) { Layer::MULTI } else { v.start_layer };
+        let l = if on(Layer::MULTI) {
+            Layer::MULTI
+        } else {
+            v.start_layer
+        };
         push(
             l,
             format!(
@@ -345,7 +460,11 @@ pub fn render(scene: &Scene, opts: &Options) -> Rendered {
             f(x),
             f(y),
             f(hgt),
-            esc(if t.font_name.is_empty() { "sans-serif" } else { &t.font_name }),
+            esc(if t.font_name.is_empty() {
+                "sans-serif"
+            } else {
+                &t.font_name
+            }),
             color(t.layer),
             esc(line)
         );
@@ -376,7 +495,12 @@ pub fn render(scene: &Scene, opts: &Options) -> Rendered {
         f(w),
         f(h)
     );
-    let _ = writeln!(svg, "<rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" fill=\"#ffffff\"/>", f(w), f(h));
+    let _ = writeln!(
+        svg,
+        "<rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" fill=\"#ffffff\"/>",
+        f(w),
+        f(h)
+    );
     for (i, g) in &groups {
         let l = layers[*i];
         let _ = writeln!(svg, "<g id=\"{}\" opacity=\"0.85\">\n{g}</g>", l.name());
@@ -384,14 +508,20 @@ pub fn render(scene: &Scene, opts: &Options) -> Rendered {
     if scene.outline.len() >= 3 {
         let mut d = String::new();
         path_of(&xf, scene.outline, &mut d);
-        let _ = writeln!(svg, "<path id=\"BoardOutline\" d=\"{d}\" fill=\"none\" stroke=\"#000000\" stroke-width=\"5\"/>");
+        let _ = writeln!(
+            svg,
+            "<path id=\"BoardOutline\" d=\"{d}\" fill=\"none\" stroke=\"#000000\" stroke-width=\"5\"/>"
+        );
         elements += 1;
     }
     for r in &scene.regions {
         if r.kind == "board_cutout" && r.outline.len() >= 3 {
             let mut d = String::new();
             path_of(&xf, &r.outline, &mut d);
-            let _ = writeln!(svg, "<path class=\"cutout\" d=\"{d}\" fill=\"#ffffff\" stroke=\"#000000\" stroke-width=\"3\"/>");
+            let _ = writeln!(
+                svg,
+                "<path class=\"cutout\" d=\"{d}\" fill=\"#ffffff\" stroke=\"#000000\" stroke-width=\"3\"/>"
+            );
             elements += 1;
         }
     }
@@ -420,7 +550,10 @@ pub fn render_pcb(doc: &PcbDoc, opts: &Options) -> Rendered {
             .texts
             .iter()
             .filter(|t| {
-                let c = t.owner.component_index.and_then(|i| doc.components.get(i as usize));
+                let c = t
+                    .owner
+                    .component_index
+                    .and_then(|i| doc.components.get(i as usize));
                 match c {
                     Some(c) if t.is_designator => c.designator_visible,
                     Some(c) if t.is_comment => c.comment_visible,

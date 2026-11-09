@@ -63,7 +63,11 @@ pub struct Variation {
 pub fn resolve_ci(dir: &Path, rel: &str) -> PathBuf {
     let norm = rel.replace('\\', "/");
     let rel_path = Path::new(&norm);
-    let mut cur = if rel_path.is_absolute() { PathBuf::from("/") } else { dir.to_path_buf() };
+    let mut cur = if rel_path.is_absolute() {
+        PathBuf::from("/")
+    } else {
+        dir.to_path_buf()
+    };
     // Drive-letter paths (C:/...) cannot be resolved; keep them verbatim.
     if norm.len() > 1 && norm.as_bytes()[1] == b':' {
         return PathBuf::from(norm);
@@ -83,7 +87,8 @@ pub fn resolve_ci(dir: &Path, rel: &str) -> PathBuf {
                 let want = name.to_string_lossy().to_lowercase();
                 let found = std::fs::read_dir(&cur).ok().and_then(|rd| {
                     rd.flatten().map(|e| e.path()).find(|p| {
-                        p.file_name().is_some_and(|f| f.to_string_lossy().to_lowercase() == want)
+                        p.file_name()
+                            .is_some_and(|f| f.to_string_lossy().to_lowercase() == want)
                     })
                 });
                 cur = found.unwrap_or(direct);
@@ -111,11 +116,18 @@ impl Project {
 
     fn from_ini(path: &Path, ini: Ini) -> Result<Project> {
         if ini.section("Design").is_none() && ini.numbered("Document").is_empty() {
-            return Err(Error::parse(format!("{} has no [Design] or [DocumentN] sections", path.display())));
+            return Err(Error::parse(format!(
+                "{} has no [Design] or [DocumentN] sections",
+                path.display()
+            )));
         }
         // Resolve the entry before consuming `..` components in Windows document paths.
         // Verification may parse bytes for an output path that has not been created yet.
-        let path = if path.exists() { std::fs::canonicalize(path)? } else { std::path::absolute(path)? };
+        let path = if path.exists() {
+            std::fs::canonicalize(path)?
+        } else {
+            std::path::absolute(path)?
+        };
         let dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
         let mut documents = Vec::new();
         for (prefix, generated) in [("Document", false), ("GeneratedDocument", true)] {
@@ -136,28 +148,50 @@ impl Project {
                 });
             }
         }
-        Ok(Project { path: path.to_path_buf(), dir, ini, documents })
+        Ok(Project {
+            path: path.to_path_buf(),
+            dir,
+            ini,
+            documents,
+        })
     }
 
     pub fn name(&self) -> String {
-        self.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+        self.path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default()
     }
 
     pub fn docs(&self, kind: DocKind) -> Vec<&ProjectDoc> {
-        self.documents.iter().filter(|d| d.kind == kind && !d.generated).collect()
+        self.documents
+            .iter()
+            .filter(|d| d.kind == kind && !d.generated)
+            .collect()
     }
 
     /// Existing schematic sheets in project order.
     pub fn schematics(&self) -> Vec<PathBuf> {
-        self.docs(DocKind::Schematic).into_iter().filter(|d| d.exists).map(|d| d.path.clone()).collect()
+        self.docs(DocKind::Schematic)
+            .into_iter()
+            .filter(|d| d.exists)
+            .map(|d| d.path.clone())
+            .collect()
     }
 
     pub fn pcbs(&self) -> Vec<PathBuf> {
-        self.docs(DocKind::Pcb).into_iter().filter(|d| d.exists).map(|d| d.path.clone()).collect()
+        self.docs(DocKind::Pcb)
+            .into_iter()
+            .filter(|d| d.exists)
+            .map(|d| d.path.clone())
+            .collect()
     }
 
     pub fn design(&self, key: &str) -> Option<String> {
-        self.ini.section("Design").and_then(|s| s.get(key)).map(str::to_owned)
+        self.ini
+            .section("Design")
+            .and_then(|s| s.get(key))
+            .map(str::to_owned)
     }
 
     pub fn design_bool(&self, key: &str) -> bool {
@@ -184,7 +218,10 @@ impl Project {
                     .filter_map(|i| s.get(&format!("Variation{i}")))
                     .map(|v| {
                         let raw = pipe_props(v);
-                        let code = raw.get("Kind").and_then(|k| k.trim().parse().ok()).unwrap_or(-1);
+                        let code = raw
+                            .get("Kind")
+                            .and_then(|k| k.trim().parse().ok())
+                            .unwrap_or(-1);
                         Variation {
                             designator: raw.get("Designator").cloned().unwrap_or_default(),
                             unique_id: raw.get("UniqueId").cloned().unwrap_or_default(),
@@ -196,7 +233,10 @@ impl Project {
                             }
                             .into(),
                             kind_code: code,
-                            alternate_part: raw.get("AlternatePart").map(|a| a.trim().to_owned()).unwrap_or_default(),
+                            alternate_part: raw
+                                .get("AlternatePart")
+                                .map(|a| a.trim().to_owned())
+                                .unwrap_or_default(),
                             raw,
                         }
                     })
@@ -204,7 +244,10 @@ impl Project {
                 let parameters = (1..=count("ParameterCount"))
                     .filter_map(|i| {
                         let p = pipe_props(s.get(&format!("Parameter{i}"))?);
-                        Some((p.get("Name")?.clone(), p.get("Value").cloned().unwrap_or_default()))
+                        Some((
+                            p.get("Name")?.clone(),
+                            p.get("Value").cloned().unwrap_or_default(),
+                        ))
                     })
                     .collect();
                 // `ParamDesignatorN=R1` + `ParamVariationN=ParameterName=Value|VariantValue=22k`;
@@ -237,10 +280,15 @@ impl Project {
         let vs = self.variants();
         let names: Vec<String> = vs.iter().map(|v| v.name.clone()).collect();
         vs.into_iter()
-            .find(|v| v.name.eq_ignore_ascii_case(name) || v.unique_id.eq_ignore_ascii_case(name) || v.index.to_string() == name)
+            .find(|v| {
+                v.name.eq_ignore_ascii_case(name)
+                    || v.unique_id.eq_ignore_ascii_case(name)
+                    || v.index.to_string() == name
+            })
             .ok_or_else(|| {
-                Error::not_found(format!("no variant {name:?}"))
-                    .hint(format!("variants: {names:?} (name, unique id or 1-based index)"))
+                Error::not_found(format!("no variant {name:?}")).hint(format!(
+                    "variants: {names:?} (name, unique id or 1-based index)"
+                ))
             })
     }
 }
@@ -277,7 +325,9 @@ struct VariantLines {
 }
 
 fn is_numbered(key: &str, prefix: &str) -> bool {
-    key.len() > prefix.len() && key[..prefix.len()].eq_ignore_ascii_case(prefix) && key[prefix.len()..].bytes().all(|b| b.is_ascii_digit())
+    key.len() > prefix.len()
+        && key[..prefix.len()].eq_ignore_ascii_case(prefix)
+        && key[prefix.len()..].bytes().all(|b| b.is_ascii_digit())
 }
 
 impl VariantLines {
@@ -291,7 +341,10 @@ impl VariantLines {
         }
         for i in 1..=count("ParamVariationCount") {
             if let Some(x) = s.entry(&format!("ParamVariation{i}")) {
-                let designator = s.entry(&format!("ParamDesignator{i}")).cloned().unwrap_or_else(|| Entry::new("", ""));
+                let designator = s
+                    .entry(&format!("ParamDesignator{i}"))
+                    .cloned()
+                    .unwrap_or_else(|| Entry::new("", ""));
                 v.params.push((designator, x.clone()));
             }
         }
@@ -308,10 +361,16 @@ impl VariantLines {
     /// Put the lines back after the variant's own fields and parameters.
     fn put(self, s: &mut Section) {
         let parameter_count = self.params.len();
-        let mut components: Vec<_> = self.variations.into_iter().map(|line| (line, Vec::new())).collect();
+        let mut components: Vec<_> = self
+            .variations
+            .into_iter()
+            .map(|line| (line, Vec::new()))
+            .collect();
         let mut orphans = Vec::new();
         for (designator, line) in self.params {
-            if let Some((_, params)) = components.iter_mut().find(|(line, _)| designator_of(&line.value).eq_ignore_ascii_case(&designator.value)) {
+            if let Some((_, params)) = components.iter_mut().find(|(line, _)| {
+                designator_of(&line.value).eq_ignore_ascii_case(&designator.value)
+            }) {
                 params.push((designator, line));
             } else {
                 orphans.push((designator, line));
@@ -337,12 +396,23 @@ impl VariantLines {
             append_params(&mut block, params);
         }
         // Altium ignores the overrides if their count appears before the rows.
-        block.push(Entry::new("ParamVariationCount", parameter_count.to_string()));
+        block.push(Entry::new(
+            "ParamVariationCount",
+            parameter_count.to_string(),
+        ));
         let at = s
             .entries
             .iter()
             .rposition(|Entry { key: k, .. }| {
-                ["UniqueID", "Description", "AllowFabrication", "ParameterCount"].iter().any(|x| k.eq_ignore_ascii_case(x)) || is_numbered(k, "Parameter")
+                [
+                    "UniqueID",
+                    "Description",
+                    "AllowFabrication",
+                    "ParameterCount",
+                ]
+                .iter()
+                .any(|x| k.eq_ignore_ascii_case(x))
+                    || is_numbered(k, "Parameter")
             })
             .map(|i| i + 1)
             .unwrap_or(s.entries.len());
@@ -351,7 +421,10 @@ impl VariantLines {
 }
 
 fn designator_of(line: &str) -> String {
-    pipe_props(line).get("Designator").cloned().unwrap_or_default()
+    pipe_props(line)
+        .get("Designator")
+        .cloned()
+        .unwrap_or_default()
 }
 
 impl Project {
@@ -361,18 +434,40 @@ impl Project {
     }
 
     /// Add an empty assembly variant; returns its `[ProjectVariantN]` index.
-    pub fn add_variant(&mut self, name: &str, unique_id: &str, allow_fabrication: bool) -> Result<u32> {
+    pub fn add_variant(
+        &mut self,
+        name: &str,
+        unique_id: &str,
+        allow_fabrication: bool,
+    ) -> Result<u32> {
         if name.trim().is_empty() || name.contains(['\r', '\n']) {
-            return Err(Error::usage("the variant name is empty or contains a line break"));
+            return Err(Error::usage(
+                "the variant name is empty or contains a line break",
+            ));
         }
-        if self.variants().iter().any(|v| v.name.eq_ignore_ascii_case(name)) {
-            return Err(Error::new(ErrorCode::Unsafe, format!("a variant named {name:?} already exists")));
+        if self
+            .variants()
+            .iter()
+            .any(|v| v.name.eq_ignore_ascii_case(name))
+        {
+            return Err(Error::new(
+                ErrorCode::Unsafe,
+                format!("a variant named {name:?} already exists"),
+            ));
         }
-        let n = self.ini.numbered("ProjectVariant").last().map(|(n, _)| n + 1).unwrap_or(1);
+        let n = self
+            .ini
+            .numbered("ProjectVariant")
+            .last()
+            .map(|(n, _)| n + 1)
+            .unwrap_or(1);
         let mut s = Section::new(format!("ProjectVariant{n}"));
         s.set("UniqueID", unique_id);
         s.set("Description", name);
-        s.set("AllowFabrication", if allow_fabrication { "1" } else { "0" });
+        s.set(
+            "AllowFabrication",
+            if allow_fabrication { "1" } else { "0" },
+        );
         s.set("ParameterCount", "0");
         VariantLines::default().put(&mut s);
         let pos = self
@@ -380,7 +475,11 @@ impl Project {
             .sections
             .iter()
             .rposition(|x| is_numbered(&x.name, "ProjectVariant"))
-            .or_else(|| self.ini.sections.iter().rposition(|x| is_numbered(&x.name, "Document") || is_numbered(&x.name, "GeneratedDocument")));
+            .or_else(|| {
+                self.ini.sections.iter().rposition(|x| {
+                    is_numbered(&x.name, "Document") || is_numbered(&x.name, "GeneratedDocument")
+                })
+            });
         match pos {
             Some(i) => self.ini.sections.insert(i + 1, s),
             None => self.ini.sections.push(s),
@@ -393,7 +492,12 @@ impl Project {
         let sec = self.variant_section_name(name)?;
         self.ini.sections.retain(|s| s.name != sec);
         let mut n = 0;
-        for s in self.ini.sections.iter_mut().filter(|s| is_numbered(&s.name, "ProjectVariant")) {
+        for s in self
+            .ini
+            .sections
+            .iter_mut()
+            .filter(|s| is_numbered(&s.name, "ProjectVariant"))
+        {
             n += 1;
             s.name = format!("ProjectVariant{n}");
         }
@@ -403,12 +507,23 @@ impl Project {
     /// Set how a variant treats one part. `unique_id` is the part's unique-id path
     /// (`\SHEETSYMBOLID\COMPONENTID`, or `\COMPONENTID` on a flat design).
     /// Returns (previous line, new line).
-    pub fn set_variation(&mut self, variant: &str, designator: &str, unique_id: &str, kind: &VariationKind) -> Result<(Option<String>, String)> {
+    pub fn set_variation(
+        &mut self,
+        variant: &str,
+        designator: &str,
+        unique_id: &str,
+        kind: &VariationKind,
+    ) -> Result<(Option<String>, String)> {
         if designator.contains(['|', '=']) || unique_id.contains(['|', '=']) {
-            return Err(Error::usage("designators and unique ids cannot contain | or ="));
+            return Err(Error::usage(
+                "designators and unique ids cannot contain | or =",
+            ));
         }
         let sec = self.variant_section_name(variant)?;
-        let s = self.ini.section_mut(&sec).ok_or_else(|| Error::internal("variant section vanished"))?;
+        let s = self
+            .ini
+            .section_mut(&sec)
+            .ok_or_else(|| Error::internal("variant section vanished"))?;
         let mut lines = VariantLines::take(s);
         let alt = match kind {
             VariationKind::Alternate(a) => a.clone(),
@@ -417,9 +532,19 @@ impl Project {
         if alt.contains('|') {
             return Err(Error::usage("the alternate part cannot contain |"));
         }
-        let line = format!("Designator={designator}|UniqueId={unique_id}|Kind={}|AlternatePart={alt}", kind.code());
-        let before = match lines.variations.iter().position(|x| designator_of(&x.value).eq_ignore_ascii_case(designator)) {
-            Some(i) => Some(std::mem::replace(&mut lines.variations[i].value, line.clone())),
+        let line = format!(
+            "Designator={designator}|UniqueId={unique_id}|Kind={}|AlternatePart={alt}",
+            kind.code()
+        );
+        let before = match lines
+            .variations
+            .iter()
+            .position(|x| designator_of(&x.value).eq_ignore_ascii_case(designator))
+        {
+            Some(i) => Some(std::mem::replace(
+                &mut lines.variations[i].value,
+                line.clone(),
+            )),
             None => {
                 lines.variations.push(Entry::new("", line.clone()));
                 None
@@ -432,26 +557,59 @@ impl Project {
     /// Set a parameter value of one part in a variant (`ParamVariation`). Creates a fitted
     /// component variation when absent: Altium needs it to attach overrides to this part.
     /// Returns the previous effective variant value (or None for an orphan override).
-    pub fn set_param_variation(&mut self, variant: &str, designator: &str, parameter: &str, value: &str) -> Result<Option<String>> {
-        if [designator, parameter, value].iter().any(|x| x.contains(['|', '\r', '\n'])) || parameter.contains('=') {
-            return Err(Error::usage("designator, parameter and value cannot contain | or line breaks (nor = in the name)"));
+    pub fn set_param_variation(
+        &mut self,
+        variant: &str,
+        designator: &str,
+        parameter: &str,
+        value: &str,
+    ) -> Result<Option<String>> {
+        if [designator, parameter, value]
+            .iter()
+            .any(|x| x.contains(['|', '\r', '\n']))
+            || parameter.contains('=')
+        {
+            return Err(Error::usage(
+                "designator, parameter and value cannot contain | or line breaks (nor = in the name)",
+            ));
         }
         let sec = self.variant_section_name(variant)?;
-        let missing_component = !self.variant(variant)?.variations.iter().any(|v| v.designator.eq_ignore_ascii_case(designator));
-        let unique_id = if missing_component { Some(self.variation_part_id(designator)?) } else { None };
-        let s = self.ini.section_mut(&sec).ok_or_else(|| Error::internal("variant section vanished"))?;
+        let missing_component = !self
+            .variant(variant)?
+            .variations
+            .iter()
+            .any(|v| v.designator.eq_ignore_ascii_case(designator));
+        let unique_id = if missing_component {
+            Some(self.variation_part_id(designator)?)
+        } else {
+            None
+        };
+        let s = self
+            .ini
+            .section_mut(&sec)
+            .ok_or_else(|| Error::internal("variant section vanished"))?;
         let mut lines = VariantLines::take(s);
         if let Some(unique_id) = unique_id {
-            lines.variations.push(Entry::new("", format!("Designator={designator}|UniqueId={unique_id}|Kind=0|AlternatePart=")));
+            lines.variations.push(Entry::new(
+                "",
+                format!("Designator={designator}|UniqueId={unique_id}|Kind=0|AlternatePart="),
+            ));
         }
         let line = format!("ParameterName={parameter}|VariantValue={value}");
         let hit = lines.params.iter().position(|(d, x)| {
-            d.value.eq_ignore_ascii_case(designator) && pipe_props(&x.value).get("ParameterName").is_some_and(|p| p.eq_ignore_ascii_case(parameter))
+            d.value.eq_ignore_ascii_case(designator)
+                && pipe_props(&x.value)
+                    .get("ParameterName")
+                    .is_some_and(|p| p.eq_ignore_ascii_case(parameter))
         });
         let before = match hit {
-            Some(i) => pipe_props(&std::mem::replace(&mut lines.params[i].1.value, line)).get("VariantValue").cloned(),
+            Some(i) => pipe_props(&std::mem::replace(&mut lines.params[i].1.value, line))
+                .get("VariantValue")
+                .cloned(),
             None => {
-                lines.params.push((Entry::new("", designator), Entry::new("", line)));
+                lines
+                    .params
+                    .push((Entry::new("", designator), Entry::new("", line)));
                 None
             }
         };
@@ -463,9 +621,12 @@ impl Project {
 
     fn variation_part_id(&self, designator: &str) -> Result<String> {
         for path in self.pcbs() {
-            let Ok(pcb) = crate::pcb::load_with(&path, &crate::pcb::LoadOptions::parts(0)) else { continue };
+            let Ok(pcb) = crate::pcb::load_with(&path, &crate::pcb::LoadOptions::parts(0)) else {
+                continue;
+            };
             if let Some(part) = pcb.components.iter().find(|part| {
-                (part.source_designator.eq_ignore_ascii_case(designator) || part.designator.eq_ignore_ascii_case(designator))
+                (part.source_designator.eq_ignore_ascii_case(designator)
+                    || part.designator.eq_ignore_ascii_case(designator))
                     && !part.source_unique_id.is_empty()
             }) {
                 return Ok(part.source_unique_id.clone());
@@ -473,7 +634,11 @@ impl Project {
         }
         if !self.schematics().is_empty() {
             let design = crate::sch::project_design(self)?;
-            if let Some(part) = design.parts.iter().find(|part| part.designator.eq_ignore_ascii_case(designator)) {
+            if let Some(part) = design
+                .parts
+                .iter()
+                .find(|part| part.designator.eq_ignore_ascii_case(designator))
+            {
                 if part.unique_id.is_empty() {
                     return Err(Error::new(ErrorCode::Unsafe, format!("{designator} has no unique id"))
                         .hint("first use `ace project set-variation <project> <variant> <part> --fitted --unique-id <id>`, then set the parameter"));
@@ -489,11 +654,18 @@ impl Project {
     /// number of lines removed.
     pub fn clear_variation(&mut self, variant: &str, designator: &str) -> Result<usize> {
         let sec = self.variant_section_name(variant)?;
-        let s = self.ini.section_mut(&sec).ok_or_else(|| Error::internal("variant section vanished"))?;
+        let s = self
+            .ini
+            .section_mut(&sec)
+            .ok_or_else(|| Error::internal("variant section vanished"))?;
         let mut lines = VariantLines::take(s);
         let n = lines.variations.len() + lines.params.len();
-        lines.variations.retain(|x| !designator_of(&x.value).eq_ignore_ascii_case(designator));
-        lines.params.retain(|(d, _)| !d.value.eq_ignore_ascii_case(designator));
+        lines
+            .variations
+            .retain(|x| !designator_of(&x.value).eq_ignore_ascii_case(designator));
+        lines
+            .params
+            .retain(|(d, _)| !d.value.eq_ignore_ascii_case(designator));
         let removed = n - lines.variations.len() - lines.params.len();
         lines.put(s);
         Ok(removed)
@@ -509,9 +681,17 @@ mod tests {
         let src = b"[Design]\r\nVersion=1.0\r\n\r\n[Document1]\r\nDocumentPath=a.SchDoc\r\n";
         let mut p = Project::from_bytes(Path::new("x.PrjPcb"), src).unwrap();
         assert_eq!(p.add_variant("Lite", "ABCDEFGH", false).unwrap(), 1);
-        p.set_variation("Lite", "R3", "\\QWERTYUI", &VariationKind::NotFitted).unwrap();
-        p.set_variation("Lite", "R4", "\\ASDFGHJK", &VariationKind::Alternate("RES_ALT".into())).unwrap();
-        p.set_param_variation("Lite", "R4", "Comment", "22k").unwrap();
+        p.set_variation("Lite", "R3", "\\QWERTYUI", &VariationKind::NotFitted)
+            .unwrap();
+        p.set_variation(
+            "Lite",
+            "R4",
+            "\\ASDFGHJK",
+            &VariationKind::Alternate("RES_ALT".into()),
+        )
+        .unwrap();
+        p.set_param_variation("Lite", "R4", "Comment", "22k")
+            .unwrap();
         let p = Project::from_bytes(Path::new("x.PrjPcb"), &p.ini.to_bytes().unwrap()).unwrap();
         let v = p.variant("Lite").unwrap();
         assert_eq!(v.variations.len(), 2);
@@ -520,7 +700,12 @@ mod tests {
         assert_eq!(v.param_variations[0]["Designator"], "R4");
         assert_eq!(v.param_variations[0]["VariantValue"], "22k");
         let mut p = p;
-        assert!(p.set_variation("Lite", "R3", "\\QWERTYUI", &VariationKind::Fitted).unwrap().0.is_some());
+        assert!(
+            p.set_variation("Lite", "R3", "\\QWERTYUI", &VariationKind::Fitted)
+                .unwrap()
+                .0
+                .is_some()
+        );
         assert_eq!(p.clear_variation("Lite", "R4").unwrap(), 2);
         assert_eq!(p.variant("Lite").unwrap().param_variations.len(), 0);
         assert_eq!(p.remove_variant("Lite").unwrap(), "ProjectVariant1");

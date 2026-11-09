@@ -153,7 +153,15 @@ mod tests {
 
     #[test]
     fn parse_len_rejects_non_finite_and_out_of_range() {
-        for bad in ["NaNmm", "nanmil", "infmm", "-infmil", "1e15mm", "100000.1mil", "-2540.1mm"] {
+        for bad in [
+            "NaNmm",
+            "nanmil",
+            "infmm",
+            "-infmil",
+            "1e15mm",
+            "100000.1mil",
+            "-2540.1mm",
+        ] {
             assert_eq!(Coord::parse_len(bad), None, "{bad}");
         }
         assert_eq!(Coord::parse_len("100000mil"), Some(Coord(1_000_000_000)));

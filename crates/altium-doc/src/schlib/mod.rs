@@ -29,7 +29,8 @@ use crate::sch::storage::{self, StoredFile};
 
 pub mod edit;
 
-pub const SCHLIB_HEADER: &str = "Protel for Windows - Schematic Library Editor Binary File Version 5.0";
+pub const SCHLIB_HEADER: &str =
+    "Protel for Windows - Schematic Library Editor Binary File Version 5.0";
 
 /// A symbol pin plus the per-pin side-stream properties.
 #[derive(Debug, Clone, Serialize)]
@@ -102,7 +103,9 @@ pub fn decode_binary_pin(data: &[u8]) -> Result<Props> {
     let mut b = Bin::new(data);
     let id = b.i32()?;
     if id != 2 {
-        return Err(Error::parse(format!("binary record id {id}, expected 2 (pin)")));
+        return Err(Error::parse(format!(
+            "binary record id {id}, expected 2 (pin)"
+        )));
     }
     let mut p = Props::new();
     let mut put = |k: &str, v: String| p.push(k.to_owned(), v);
@@ -150,7 +153,9 @@ fn decode_side(stream: &str, data: &[u8]) -> Option<(usize, Side)> {
     let id: usize = b.pascal().ok()?.trim().parse().ok()?;
     let n = b.u32().ok()? as usize;
     let mut raw = Vec::new();
-    flate2::read::ZlibDecoder::new(b.bytes(n).ok()?).read_to_end(&mut raw).ok()?;
+    flate2::read::ZlibDecoder::new(b.bytes(n).ok()?)
+        .read_to_end(&mut raw)
+        .ok()?;
     if stream.eq_ignore_ascii_case("PinFrac") {
         let mut r = Bin::new(&raw);
         return Some((id, Side::Frac(r.i32().ok()?, r.i32().ok()?, r.i32().ok()?)));
@@ -177,8 +182,11 @@ pub fn load(path: &Path) -> Result<SchLib> {
 
 pub fn load_with(path: &Path, keep_raw: bool) -> Result<SchLib> {
     if DocKind::of(path) != DocKind::SchLib {
-        return Err(Error::new(ErrorCode::WrongFileType, format!("{} is not a .SchLib", path.display()))
-            .hint("schematic sheets use `ace sch ...`"));
+        return Err(Error::new(
+            ErrorCode::WrongFileType,
+            format!("{} is not a .SchLib", path.display()),
+        )
+        .hint("schematic sheets use `ace sch ...`"));
     }
     load_compound(path, Compound::open(path)?, keep_raw)
 }
@@ -189,21 +197,28 @@ pub fn load_bytes(path: &Path, bytes: Vec<u8>, keep_raw: bool) -> Result<SchLib>
 }
 
 fn load_compound(path: &Path, mut cf: Compound, keep_raw: bool) -> Result<SchLib> {
-    let fh = cf.read("FileHeader").map_err(|e| Error::parse(format!("{}: no FileHeader ({})", path.display(), e.message)))?;
+    let fh = cf
+        .read("FileHeader")
+        .map_err(|e| Error::parse(format!("{}: no FileHeader ({})", path.display(), e.message)))?;
     let mut warnings = Vec::new();
     let (recs, _) = split_records(&fh);
     let header = recs.first().map(|r| r.props()).unwrap_or_default();
     let htext = header.str("HEADER");
     if !htext.eq_ignore_ascii_case(SCHLIB_HEADER) {
         if htext.to_ascii_lowercase().contains("capture") {
-            return Err(Error::new(ErrorCode::WrongFileType, format!("{} is a schematic sheet ({htext})", path.display()))
-                .hint("use `ace sch ...`"));
+            return Err(Error::new(
+                ErrorCode::WrongFileType,
+                format!("{} is a schematic sheet ({htext})", path.display()),
+            )
+            .hint("use `ace sch ...`"));
         }
         if !htext.to_ascii_lowercase().contains("library") {
             return Err(Error::new(ErrorCode::WrongFileType, format!("{} is not a schematic library (FileHeader header {htext:?})", path.display()))
                 .hint("pass a .SchLib saved by Altium Designer; `ace raw streams <file>` shows what the file holds"));
         }
-        warnings.push(format!("unexpected FileHeader header {htext:?}; parsing anyway"));
+        warnings.push(format!(
+            "unexpected FileHeader header {htext:?}; parsing anyway"
+        ));
     }
     // Library references and their storage names.
     let mut keys: IndexMap<String, String> = IndexMap::new();
@@ -211,7 +226,10 @@ fn load_compound(path: &Path, mut cf: Compound, keep_raw: bool) -> Result<SchLib
         let (r, _) = split_records(&sk);
         if let Some(p) = r.first().map(|r| r.props()) {
             for i in 0..p.int_or("KEYCOUNT", 0).max(0) {
-                keys.insert(p.str(&format!("LIBREF{i}")).to_lowercase(), p.str(&format!("SECTIONKEY{i}")));
+                keys.insert(
+                    p.str(&format!("LIBREF{i}")).to_lowercase(),
+                    p.str(&format!("SECTIONKEY{i}")),
+                );
             }
         }
     }
@@ -220,22 +238,39 @@ fn load_compound(path: &Path, mut cf: Compound, keep_raw: bool) -> Result<SchLib
     let mut order: Vec<(String, String, i64)> = Vec::new(); // (libref, storage, partcount)
     for i in 0..count {
         let libref = header.str(&format!("LIBREF{i}"));
-        let storage_name = keys.get(&libref.to_lowercase()).cloned().unwrap_or_else(|| {
-            let s: String = libref.replace('/', "_").chars().take(31).collect();
-            storages.iter().find(|x| x.eq_ignore_ascii_case(&s)).cloned().unwrap_or(s)
-        });
-        order.push((libref, storage_name, header.int_or(&format!("PARTCOUNT{i}"), 0)));
+        let storage_name = keys
+            .get(&libref.to_lowercase())
+            .cloned()
+            .unwrap_or_else(|| {
+                let s: String = libref.replace('/', "_").chars().take(31).collect();
+                storages
+                    .iter()
+                    .find(|x| x.eq_ignore_ascii_case(&s))
+                    .cloned()
+                    .unwrap_or(s)
+            });
+        order.push((
+            libref,
+            storage_name,
+            header.int_or(&format!("PARTCOUNT{i}"), 0),
+        ));
     }
     for s in &storages {
-        if !order.iter().any(|(_, st, _)| st.eq_ignore_ascii_case(s)) && cf.exists(&format!("{s}/Data")) {
-            warnings.push(format!("storage {s:?} holds a symbol not listed in the header"));
+        if !order.iter().any(|(_, st, _)| st.eq_ignore_ascii_case(s))
+            && cf.exists(&format!("{s}/Data"))
+        {
+            warnings.push(format!(
+                "storage {s:?} holds a symbol not listed in the header"
+            ));
             order.push((s.clone(), s.clone(), 0));
         }
     }
     let mut symbols = Vec::new();
     for (libref, st, _) in order {
         let Some(data) = cf.read_opt(&format!("{st}/Data")) else {
-            warnings.push(format!("symbol {libref:?}: storage {st:?} has no Data stream"));
+            warnings.push(format!(
+                "symbol {libref:?}: storage {st:?} has no Data stream"
+            ));
             continue;
         };
         let streams: Vec<String> = cf
@@ -257,13 +292,22 @@ fn load_compound(path: &Path, mut cf: Compound, keep_raw: bool) -> Result<SchLib
         }
     }
     if symbols.is_empty() && count > 0 {
-        return Err(Error::parse(format!("{}: none of the {count} symbols could be decoded", path.display())));
+        return Err(Error::parse(format!(
+            "{}: none of the {count} symbols could be decoded",
+            path.display()
+        )));
     }
     let storage = match cf.read_opt("Storage") {
         Some(b) => storage::parse(&b, &mut warnings),
         None => vec![],
     };
-    Ok(SchLib { path: path.to_path_buf(), header, symbols, storage, warnings })
+    Ok(SchLib {
+        path: path.to_path_buf(),
+        header,
+        symbols,
+        storage,
+        warnings,
+    })
 }
 
 fn parse_symbol(
@@ -315,7 +359,10 @@ fn parse_symbol(
         }
     }
     let mut sym = Symbol {
-        name: comp.get("LIBREFERENCE").filter(|s| !s.is_empty()).unwrap_or_else(|| libref.to_owned()),
+        name: comp
+            .get("LIBREFERENCE")
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| libref.to_owned()),
         storage: storage_name.to_owned(),
         description: comp.str("COMPONENTDESCRIPTION"),
         part_count: (comp.int_or("PARTCOUNT", 2) - 1).max(1),
@@ -368,7 +415,9 @@ fn parse_symbol(
                 let mut m = Model::from_props(i, p, keep_raw);
                 // Map definers (47) under this model's list (46), parameters under 48.
                 for (j, rj, pj) in &records {
-                    let Some(o) = rt::owner_index(pj) else { continue };
+                    let Some(o) = rt::owner_index(pj) else {
+                        continue;
+                    };
                     if *rj == 46 && o == i {
                         for (_, rk, pk) in &records {
                             if *rk == 47 && rt::owner_index(pk) == Some(*j) {
@@ -391,12 +440,20 @@ fn parse_symbol(
                 sym.models.push(m);
             }
             1 => warnings.push(format!("record {i}: second component record in one symbol")),
-            n if rt::type_name(n) == "unknown" => warnings.push(format!("record {i}: unknown record type {n}")),
-            n => sym.primitives.push(Primitive::from_props(i, n, p, keep_raw)),
+            n if rt::type_name(n) == "unknown" => {
+                warnings.push(format!("record {i}: unknown record type {n}"))
+            }
+            n => sym
+                .primitives
+                .push(Primitive::from_props(i, n, p, keep_raw)),
         }
     }
     prim::resolve_params(&mut sym.parameters, &[]);
-    sym.comment = sym.parameters.iter().find(|p| p.name.eq_ignore_ascii_case("Comment")).map(|p| p.effective().to_owned());
+    sym.comment = sym
+        .parameters
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case("Comment"))
+        .map(|p| p.effective().to_owned());
     sym.footprint = prim::current_footprint(&sym.models).map(|m| m.name.clone());
     sym.warnings = warnings;
     sym.records = records;
@@ -408,9 +465,18 @@ impl SchLib {
         self.symbols
             .iter()
             .find(|s| s.name == name)
-            .or_else(|| self.symbols.iter().find(|s| s.name.eq_ignore_ascii_case(name) || s.storage.eq_ignore_ascii_case(name)))
+            .or_else(|| {
+                self.symbols.iter().find(|s| {
+                    s.name.eq_ignore_ascii_case(name) || s.storage.eq_ignore_ascii_case(name)
+                })
+            })
             .ok_or_else(|| {
-                let names: Vec<&str> = self.symbols.iter().map(|s| s.name.as_str()).take(60).collect();
+                let names: Vec<&str> = self
+                    .symbols
+                    .iter()
+                    .map(|s| s.name.as_str())
+                    .take(60)
+                    .collect();
                 Error::not_found(format!("no symbol {name:?} in {}", self.path.display()))
                     .hint(format!("symbols: {}", names.join(", ")))
             })
@@ -420,8 +486,14 @@ impl SchLib {
     pub fn find(&self, needle: &str) -> Vec<crate::sch::Hit> {
         let mut out = Vec::new();
         for s in &self.symbols {
-            let recs: Vec<(usize, String, i64, &Props)> = s.records.iter().map(|(i, r, p)| (*i, s.name.clone(), *r, p)).collect();
-            out.extend(crate::sch::find_text(&recs, needle, |_| Some(s.name.clone())));
+            let recs: Vec<(usize, String, i64, &Props)> = s
+                .records
+                .iter()
+                .map(|(i, r, p)| (*i, s.name.clone(), *r, p))
+                .collect();
+            out.extend(crate::sch::find_text(&recs, needle, |_| {
+                Some(s.name.clone())
+            }));
         }
         out
     }
@@ -435,7 +507,9 @@ mod tests {
     fn binary_pin() {
         // CAT24C256 pin 1 from BeagleBoneCape.SchLib.
         let hex = "0200000000010000000000000001043a1400140000000000000002413001310000";
-        let bytes: Vec<u8> = (0..hex.len() / 2).map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap()).collect();
+        let bytes: Vec<u8> = (0..hex.len() / 2)
+            .map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap())
+            .collect();
         let p = decode_binary_pin(&bytes).unwrap();
         assert_eq!(p.raw("NAME"), Some("A0"));
         assert_eq!(p.raw("DESIGNATOR"), Some("1"));

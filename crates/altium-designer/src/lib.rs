@@ -34,8 +34,14 @@ pub fn doctor() -> Value {
     };
     let host = ops::host_choice(&cfg);
     let steps = setup::steps(&cfg);
-    let ready = steps.iter().filter(|s| s.id != "license").all(|s| s.done || s.id == "bridge");
-    let next = steps.iter().find(|s| !s.done && s.id != "license").map(|s| s.id);
+    let ready = steps
+        .iter()
+        .filter(|s| s.id != "license")
+        .all(|s| s.done || s.id == "bridge");
+    let next = steps
+        .iter()
+        .find(|s| !s.done && s.id != "license")
+        .map(|s| s.id);
     json!({
         "config": config::path(),
         "host": host,

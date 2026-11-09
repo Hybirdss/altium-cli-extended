@@ -36,7 +36,10 @@ fn case_only_rename_reads_back_and_keeps_storage_spelling() {
     let before = streams(&lib);
     let d = ok(&["pcblib", "rename", &l, "SOIC-8", "soic-8"]);
     assert_eq!(d["verified"], true);
-    assert_eq!(ok(&["pcblib", "info", &l])["names"], json!(["BBB_CAPE_HEADER", "soic-8", "R0603"]));
+    assert_eq!(
+        ok(&["pcblib", "info", &l])["names"],
+        json!(["BBB_CAPE_HEADER", "soic-8", "R0603"])
+    );
     let shown = ok(&["pcblib", "show", &l, "soic-8"]);
     assert_eq!(shown["footprint"]["pads"], 8);
     assert_eq!(shown["footprint"]["storage"], "SOIC-8");
@@ -68,7 +71,10 @@ fn pcblib_footprint_edits() {
     assert_eq!(d["changes"][0]["after"], "SOIC-8N");
     assert_eq!(d["verified"], true);
     assert!(dir.join("BeagleBoneCape.PcbLib.bak").exists());
-    assert_eq!(ok(&["pcblib", "info", &l])["names"], json!(["BBB_CAPE_HEADER", "SOIC-8N", "R0603"]));
+    assert_eq!(
+        ok(&["pcblib", "info", &l])["names"],
+        json!(["BBB_CAPE_HEADER", "SOIC-8N", "R0603"])
+    );
     err(&["pcblib", "show", &l, "SOIC-8"], "NOT_FOUND");
     err(&["pcblib", "rename", &l, "SOIC-8N", "R0603"], "UNSAFE");
     ok(&["pcblib", "rename", &l, "SOIC-8N", "SOIC-8n", "--dry-run"]);
@@ -78,15 +84,28 @@ fn pcblib_footprint_edits() {
     assert_prefix_unchanged(&before, &after, "BBB_CAPE_HEADER/");
     assert_prefix_unchanged(&before, &after, "Library/Models/");
     assert_prefix_unchanged(&before, &after, "FileVersionInfo/");
-    assert!(!after.keys().any(|k| k.starts_with("SOIC-8/")), "the old storage is still there");
+    assert!(
+        !after.keys().any(|k| k.starts_with("SOIC-8/")),
+        "the old storage is still there"
+    );
     let sh = ok(&["pcblib", "show", &l, "SOIC-8N"]);
     assert_eq!(sh["footprint"]["pads"], 8);
     assert_eq!(sh["footprint"]["primitives"]["tracks"], 14);
-    assert_eq!(sh["footprint"]["description"], "SOIC, 8-Leads, Body 5.1x4.0mm (max), Pitch 1.27mm, IPC Medium Density");
+    assert_eq!(
+        sh["footprint"]["description"],
+        "SOIC, 8-Leads, Body 5.1x4.0mm (max), Pitch 1.27mm, IPC Medium Density"
+    );
     let (_, env) = run(&["pcblib", "show", &l, "SOIC-8N"]);
     assert_eq!(env["warnings"], json!([]));
 
-    let d = ok(&["pcblib", "set-param", &l, "SOIC-8N", "description", "Narrow body SOIC"]);
+    let d = ok(&[
+        "pcblib",
+        "set-param",
+        &l,
+        "SOIC-8N",
+        "description",
+        "Narrow body SOIC",
+    ]);
     assert_eq!(d["changes"][0]["key"], "DESCRIPTION");
     assert_eq!(d["changes"][0]["action"], "set");
     ok(&["pcblib", "set-param", &l, "SOIC-8N", "height", "2.5mm"]);
@@ -95,13 +114,36 @@ fn pcblib_footprint_edits() {
     let h = sh["footprint"]["height"].as_f64().unwrap();
     assert!((h - 98.4252).abs() < 0.01, "height reads back as {h} mil");
     assert_eq!(sh["footprint"]["pads"], 8);
-    err(&["pcblib", "set-param", &l, "SOIC-8N", "height", "2.5"], "USAGE");
-    err(&["pcblib", "set-param", &l, "NO-SUCH", "description", "x"], "NOT_FOUND");
-    let same = ok(&["pcblib", "set-param", &l, "SOIC-8N", "description", "Narrow body SOIC"]);
+    err(
+        &["pcblib", "set-param", &l, "SOIC-8N", "height", "2.5"],
+        "USAGE",
+    );
+    err(
+        &["pcblib", "set-param", &l, "NO-SUCH", "description", "x"],
+        "NOT_FOUND",
+    );
+    let same = ok(&[
+        "pcblib",
+        "set-param",
+        &l,
+        "SOIC-8N",
+        "description",
+        "Narrow body SOIC",
+    ]);
     assert_eq!(same["changed"], false);
-    let d = ok(&["pcblib", "set-param", &l, "SOIC-8N", "MFR_PART", "SOIC-8N-W"]);
+    let d = ok(&[
+        "pcblib",
+        "set-param",
+        &l,
+        "SOIC-8N",
+        "MFR_PART",
+        "SOIC-8N-W",
+    ]);
     assert_eq!(d["changes"][0]["action"], "create");
-    assert_eq!(ok(&["pcblib", "show", &l, "SOIC-8N"])["footprint"]["parameters"]["MFR_PART"], "SOIC-8N-W");
+    assert_eq!(
+        ok(&["pcblib", "show", &l, "SOIC-8N"])["footprint"]["parameters"]["MFR_PART"],
+        "SOIC-8N-W"
+    );
     let after_params = streams(&lib);
     assert_prefix_unchanged(&before, &after_params, "R0603/");
     assert_prefix_unchanged(&before, &after_params, "BBB_CAPE_HEADER/");
@@ -109,7 +151,10 @@ fn pcblib_footprint_edits() {
     let d = ok(&["pcblib", "remove", &l, "SOIC-8N"]);
     assert_eq!(d["changes"][0]["action"], "remove");
     assert_eq!(d["footprints"], 2);
-    assert_eq!(ok(&["pcblib", "info", &l])["names"], json!(["BBB_CAPE_HEADER", "R0603"]));
+    assert_eq!(
+        ok(&["pcblib", "info", &l])["names"],
+        json!(["BBB_CAPE_HEADER", "R0603"])
+    );
     err(&["pcblib", "remove", &l, "SOIC-8N"], "NOT_FOUND");
     let after_remove = streams(&lib);
     assert!(!after_remove.keys().any(|k| k.starts_with("SOIC-8N/")));
@@ -140,7 +185,14 @@ fn pcblib_copy_footprint_with_models() {
 
     let d = ok(&["pcblib", "copy", &l, &o, "BBB_CAPE_HEADER"]);
     assert_eq!(d["footprints"], count + 1);
-    assert!(d["changes"].as_array().unwrap().iter().any(|c| c["key"] == "model_id"), "{d}");
+    assert!(
+        d["changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["key"] == "model_id"),
+        "{d}"
+    );
     let info = ok(&["pcblib", "info", &l]);
     assert_eq!(info["models"], 1);
     assert_eq!(info["embedded_models"], 1);
@@ -150,8 +202,14 @@ fn pcblib_copy_footprint_with_models() {
     let got = ok(&["pcblib", "show", &l, "BBB_CAPE_HEADER"]);
     assert_eq!(got["pads"], src["pads"]);
     assert_eq!(got["bodies"], src["bodies"]);
-    assert_eq!(got["footprint"]["primitives"], src["footprint"]["primitives"]);
-    assert_eq!(got["footprint"]["description"], src["footprint"]["description"]);
+    assert_eq!(
+        got["footprint"]["primitives"],
+        src["footprint"]["primitives"]
+    );
+    assert_eq!(
+        got["footprint"]["description"],
+        src["footprint"]["description"]
+    );
     assert_eq!(got["footprint"]["models"], src["footprint"]["models"]);
 
     let after = streams(&lib);
@@ -162,12 +220,34 @@ fn pcblib_copy_footprint_with_models() {
         assert_eq!(after.get(k), Some(v), "stream {k} changed");
     }
     assert_eq!(after["Library/Models/Header"], 1u32.to_le_bytes().to_vec());
-    assert_eq!(std::fs::read(&other).unwrap(), other_bytes, "the source library changed");
+    assert_eq!(
+        std::fs::read(&other).unwrap(),
+        other_bytes,
+        "the source library changed"
+    );
 
     err(&["pcblib", "copy", &l, &o, "BBB_CAPE_HEADER"], "UNSAFE");
-    let d = ok(&["pcblib", "copy", &l, &o, "BBB_CAPE_HEADER", "--name", "HDR46"]);
-    assert_eq!(d["changes"].as_array().unwrap().len(), 1, "the model is already there: {d}");
-    assert_eq!(ok(&["pcblib", "show", &l, "HDR46"])["pads"].as_array().unwrap().len(), 46);
+    let d = ok(&[
+        "pcblib",
+        "copy",
+        &l,
+        &o,
+        "BBB_CAPE_HEADER",
+        "--name",
+        "HDR46",
+    ]);
+    assert_eq!(
+        d["changes"].as_array().unwrap().len(),
+        1,
+        "the model is already there: {d}"
+    );
+    assert_eq!(
+        ok(&["pcblib", "show", &l, "HDR46"])["pads"]
+            .as_array()
+            .unwrap()
+            .len(),
+        46
+    );
 
     let step = dir.join("step");
     let m = ok(&["pcblib", "models", &l, "--extract", &s(&step)]);
@@ -189,9 +269,19 @@ fn pcblib_rename_moves_the_storage() {
     let lib = copy_to(&root.join("quasar_arm_pcb/PcbLib1.PcbLib"), &dir);
     let l = s(&lib);
     let before = streams(&lib);
-    ok(&["pcblib", "rename", &l, "HC-49/U3H (low profile)", "HC-49/3H low profile"]);
+    ok(&[
+        "pcblib",
+        "rename",
+        &l,
+        "HC-49/U3H (low profile)",
+        "HC-49/3H low profile",
+    ]);
     let after = streams(&lib);
-    assert!(!after.keys().any(|k| k.starts_with("HC-49_U3H (low profile)/")));
+    assert!(
+        !after
+            .keys()
+            .any(|k| k.starts_with("HC-49_U3H (low profile)/"))
+    );
     assert_eq!(
         ok(&["pcblib", "show", &l, "HC-49/3H low profile"])["footprint"]["storage"],
         "HC-49_3H low profile"
@@ -213,7 +303,14 @@ fn pcblib_copy_linked_model_preserves_reference() {
     assert_eq!(before["bodies"][0]["model_embedded"], false);
     let (exit, env) = run(&["pcblib", "copy", &l, &l, "SOIC-8", "--name", "SOIC-8B"]);
     assert_eq!(exit, 0, "{env}");
-    assert!(env["warnings"].as_array().unwrap().iter().any(|w| w.as_str().unwrap().contains("linked model")), "{env}");
+    assert!(
+        env["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|w| w.as_str().unwrap().contains("linked model")),
+        "{env}"
+    );
     let after = ok(&["pcblib", "show", &l, "SOIC-8B"]);
     assert_eq!(before["bodies"], after["bodies"]);
     assert_eq!(before["pads"], after["pads"]);

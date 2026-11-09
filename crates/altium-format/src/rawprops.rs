@@ -36,11 +36,19 @@ pub fn encode_ansi_strict(s: &str) -> Result<Vec<u8>> {
 /// Byte ranges `(field_start, value_start, value_end)` of each `|KEY=VALUE` field, where
 /// `field_start` points at the key (after the `|`).
 pub fn fields(data: &[u8]) -> Vec<(usize, usize, usize)> {
-    let end = if data.last() == Some(&0) { data.len() - 1 } else { data.len() };
+    let end = if data.last() == Some(&0) {
+        data.len() - 1
+    } else {
+        data.len()
+    };
     let mut out = Vec::new();
     let mut start = 0;
     while start <= end {
-        let stop = data[start..end].iter().position(|&b| b == b'|').map(|p| start + p).unwrap_or(end);
+        let stop = data[start..end]
+            .iter()
+            .position(|&b| b == b'|')
+            .map(|p| start + p)
+            .unwrap_or(end);
         if stop > start
             && let Some(eq) = data[start..stop].iter().position(|&b| b == b'=')
         {
@@ -56,7 +64,9 @@ pub fn key_of(data: &[u8], f: (usize, usize, usize)) -> &[u8] {
 }
 
 pub fn find_field(data: &[u8], key: &str) -> Option<(usize, usize, usize)> {
-    fields(data).into_iter().find(|&f| key_of(data, f).eq_ignore_ascii_case(key.as_bytes()))
+    fields(data)
+        .into_iter()
+        .find(|&f| key_of(data, f).eq_ignore_ascii_case(key.as_bytes()))
 }
 
 /// Replace (or append) one field's value, keeping every other byte.
@@ -73,14 +83,22 @@ pub fn put_field(data: &mut Vec<u8>, key: &str, value: &[u8], before_key: Option
     let at = before_key
         .and_then(|k| find_field(data, k))
         .map(|(ks, _, _)| ks - 1)
-        .unwrap_or(if data.last() == Some(&0) { data.len() - 1 } else { data.len() });
+        .unwrap_or(if data.last() == Some(&0) {
+            data.len() - 1
+        } else {
+            data.len()
+        });
     data.splice(at..at, field);
 }
 
 pub fn drop_field(data: &mut Vec<u8>, key: &str) -> bool {
     match find_field(data, key) {
         Some((ks, _, ve)) => {
-            let start = if ks > 0 && data[ks - 1] == b'|' { ks - 1 } else { ks };
+            let start = if ks > 0 && data[ks - 1] == b'|' {
+                ks - 1
+            } else {
+                ks
+            };
             data.drain(start..ve);
             true
         }
@@ -105,4 +123,3 @@ pub fn set_text_field(data: &mut Vec<u8>, key: &str, value: &str) -> Result<()> 
     drop_field(data, &format!("UNICODE__{key}"));
     Ok(())
 }
-

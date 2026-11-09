@@ -56,7 +56,14 @@ pub const fn m(
     example: &'static str,
     notes: &'static str,
 ) -> CmdMeta {
-    CmdMeta { path, backend, effect, returns, example, notes }
+    CmdMeta {
+        path,
+        backend,
+        effect,
+        returns,
+        example,
+        notes,
+    }
 }
 
 /// Every module's table.

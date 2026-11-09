@@ -73,7 +73,12 @@ pub enum SkillFile {
     Commands,
 }
 
-const ALL: &[Target] = &[Target::Agents, Target::Claude, Target::Codex, Target::Gemini];
+const ALL: &[Target] = &[
+    Target::Agents,
+    Target::Claude,
+    Target::Codex,
+    Target::Gemini,
+];
 
 impl Target {
     fn name(self) -> &'static str {
@@ -99,7 +104,11 @@ impl Target {
 /// The user's home directory: `HOME` (`USERPROFILE` first on Windows, where shells such as
 /// Git Bash set `HOME` to a POSIX path), else HOMEDRIVE+HOMEPATH.
 pub fn home() -> Result<PathBuf> {
-    let order = if cfg!(windows) { ["USERPROFILE", "HOME"] } else { ["HOME", "USERPROFILE"] };
+    let order = if cfg!(windows) {
+        ["USERPROFILE", "HOME"]
+    } else {
+        ["HOME", "USERPROFILE"]
+    };
     for k in order {
         if let Some(v) = std::env::var_os(k).filter(|v| !v.is_empty()) {
             return Ok(PathBuf::from(v));
@@ -110,13 +119,21 @@ pub fn home() -> Result<PathBuf> {
         s.push(p);
         return Ok(PathBuf::from(s));
     }
-    Err(Error::new(ErrorCode::Io, "cannot find the home directory (HOME / USERPROFILE unset)").hint("pass --dir <skills directory>"))
+    Err(Error::new(
+        ErrorCode::Io,
+        "cannot find the home directory (HOME / USERPROFILE unset)",
+    )
+    .hint("pass --dir <skills directory>"))
 }
 
 fn expand(targets: &[Target]) -> Vec<Target> {
     let mut v: Vec<Target> = vec![];
     for t in targets {
-        let add: &[Target] = if *t == Target::All { ALL } else { std::slice::from_ref(t) };
+        let add: &[Target] = if *t == Target::All {
+            ALL
+        } else {
+            std::slice::from_ref(t)
+        };
         for a in add {
             if !v.contains(a) {
                 v.push(*a);
@@ -127,26 +144,44 @@ fn expand(targets: &[Target]) -> Vec<Target> {
 }
 
 /// `(target name, skill directory)` for the requested targets or `--dir`.
-fn destinations(targets: &[Target], dir: Option<&Path>, default_detect: bool) -> Result<Vec<(String, PathBuf)>> {
+fn destinations(
+    targets: &[Target],
+    dir: Option<&Path>,
+    default_detect: bool,
+) -> Result<Vec<(String, PathBuf)>> {
     if let Some(d) = dir {
         return Ok(vec![("dir".into(), d.join(SKILL_NAME))]);
     }
     let h = home()?;
     let chosen = if targets.is_empty() {
         if default_detect {
-            ALL.iter().copied().filter(|t| *t == Target::Agents || h.join(t.home_dir()).is_dir()).collect()
+            ALL.iter()
+                .copied()
+                .filter(|t| *t == Target::Agents || h.join(t.home_dir()).is_dir())
+                .collect()
         } else {
             ALL.to_vec()
         }
     } else {
         expand(targets)
     };
-    Ok(chosen.into_iter().map(|t| (t.name().to_owned(), h.join(t.home_dir()).join("skills").join(SKILL_NAME))).collect())
+    Ok(chosen
+        .into_iter()
+        .map(|t| {
+            (
+                t.name().to_owned(),
+                h.join(t.home_dir()).join("skills").join(SKILL_NAME),
+            )
+        })
+        .collect())
 }
 
 /// Every skill file with its generated content.
 pub fn files(root: &clap::Command) -> Vec<(&'static str, String)> {
-    vec![("SKILL.md", skill_md(root)), ("COMMANDS.md", commands_md(root))]
+    vec![
+        ("SKILL.md", skill_md(root)),
+        ("COMMANDS.md", commands_md(root)),
+    ]
 }
 
 pub fn run_print(file: SkillFile, root: &clap::Command) -> Result<Out> {
@@ -165,7 +200,9 @@ pub fn run(c: SkillCmd, root: &clap::Command, ctx: &Ctx) -> Result<Out> {
             let mut items = vec![];
             for (target, d) in destinations(&targets, dir.as_deref(), true)? {
                 // A symlink left by older versions is replaced by a real directory.
-                let was_link = d.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink());
+                let was_link = d
+                    .symlink_metadata()
+                    .is_ok_and(|m| m.file_type().is_symlink());
                 let mut written = vec![];
                 let mut unchanged = vec![];
                 for (name, content) in &generated {
@@ -189,7 +226,10 @@ pub fn run(c: SkillCmd, root: &clap::Command, ctx: &Ctx) -> Result<Out> {
                 }
                 items.push(json!({"target": target, "path": d, "written": written, "unchanged": unchanged, "replaced_symlink": was_link}));
             }
-            Out::new(list_with(&items, json!({"skill": SKILL_NAME, "version": env!("CARGO_PKG_VERSION")}))?)
+            Out::new(list_with(
+                &items,
+                json!({"skill": SKILL_NAME, "version": env!("CARGO_PKG_VERSION")}),
+            )?)
         }
         SkillCmd::Status { dir } => {
             let mut dests = destinations(&[], None, false)?;
@@ -199,8 +239,14 @@ pub fn run(c: SkillCmd, root: &clap::Command, ctx: &Ctx) -> Result<Out> {
             let items: Vec<Value> = dests
                 .into_iter()
                 .map(|(target, d)| {
-                    let present: Vec<&str> = FILES.iter().copied().filter(|f| d.join(f).is_file()).collect();
-                    let current = generated.iter().all(|(n, c)| std::fs::read(d.join(n)).ok().as_deref() == Some(c.as_bytes()));
+                    let present: Vec<&str> = FILES
+                        .iter()
+                        .copied()
+                        .filter(|f| d.join(f).is_file())
+                        .collect();
+                    let current = generated.iter().all(|(n, c)| {
+                        std::fs::read(d.join(n)).ok().as_deref() == Some(c.as_bytes())
+                    });
                     json!({
                         "target": target,
                         "path": d,
@@ -211,8 +257,13 @@ pub fn run(c: SkillCmd, root: &clap::Command, ctx: &Ctx) -> Result<Out> {
                     })
                 })
                 .collect();
-            let stale = items.iter().any(|i| i["installed"] == true && i["up_to_date"] == false);
-            let mut out = Out::new(list_with(&items, json!({"skill": SKILL_NAME, "version": env!("CARGO_PKG_VERSION")}))?)?;
+            let stale = items
+                .iter()
+                .any(|i| i["installed"] == true && i["up_to_date"] == false);
+            let mut out = Out::new(list_with(
+                &items,
+                json!({"skill": SKILL_NAME, "version": env!("CARGO_PKG_VERSION")}),
+            )?)?;
             if stale {
                 out = out.warn("an installed copy differs from this binary's skill: run `ace skill install` to refresh it");
             }
@@ -221,7 +272,9 @@ pub fn run(c: SkillCmd, root: &clap::Command, ctx: &Ctx) -> Result<Out> {
         SkillCmd::Uninstall { targets, dir } => {
             let mut items = vec![];
             for (target, d) in destinations(&targets, dir.as_deref(), false)? {
-                let is_link = d.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink());
+                let is_link = d
+                    .symlink_metadata()
+                    .is_ok_and(|m| m.file_type().is_symlink());
                 let mut removed = vec![];
                 if is_link {
                     if !ctx.dry_run {
@@ -239,7 +292,10 @@ pub fn run(c: SkillCmd, root: &clap::Command, ctx: &Ctx) -> Result<Out> {
                         }
                     }
                     // Remove the directory only when nothing else is left in it.
-                    if !ctx.dry_run && d.is_dir() && std::fs::read_dir(&d).is_ok_and(|mut r| r.next().is_none()) {
+                    if !ctx.dry_run
+                        && d.is_dir()
+                        && std::fs::read_dir(&d).is_ok_and(|mut r| r.next().is_none())
+                    {
                         std::fs::remove_dir(&d)?;
                     }
                 }
@@ -254,7 +310,9 @@ pub fn run(c: SkillCmd, root: &clap::Command, ctx: &Ctx) -> Result<Out> {
 
 fn remove_link(p: &Path) -> Result<()> {
     // Windows directory symlinks/junctions are removed with remove_dir, files with remove_file.
-    std::fs::remove_file(p).or_else(|_| std::fs::remove_dir(p)).map_err(Error::from)
+    std::fs::remove_file(p)
+        .or_else(|_| std::fs::remove_dir(p))
+        .map_err(Error::from)
 }
 
 // ------------------------------------------------------------------------------ content
@@ -270,12 +328,17 @@ design rules, parameters, footprints and symbols, revision diffs, Gerber/NC dril
 
 /// One line about a command group.
 fn group_about(root: &clap::Command, g: &str) -> String {
-    find_cmd(root, g).and_then(|c| c.get_about()).map(|a| a.to_string()).unwrap_or_default()
+    find_cmd(root, g)
+        .and_then(|c| c.get_about())
+        .map(|a| a.to_string())
+        .unwrap_or_default()
 }
 
 pub fn skill_md(root: &clap::Command) -> String {
     let mut s = String::new();
-    s.push_str(&format!("---\nname: {SKILL_NAME}\ndescription: {DESCRIPTION}\n---\n\n"));
+    s.push_str(&format!(
+        "---\nname: {SKILL_NAME}\ndescription: {DESCRIPTION}\n---\n\n"
+    ));
     s.push_str(SKILL_BODY);
     // Generated overview of command groups.
     s.push_str("\n## Command groups\n\n| group | commands | what |\n|---|---|---|\n");
@@ -287,17 +350,27 @@ pub fn skill_md(root: &clap::Command) -> String {
             groups.push(g);
         }
     }
-    let meta_cmds: Vec<&str> = vec!["commands", "describe", "skill", "errors", "doctor", "inspect"];
+    let meta_cmds: Vec<&str> = vec![
+        "commands", "describe", "skill", "errors", "doctor", "inspect",
+    ];
     for g in groups.iter().filter(|g| !meta_cmds.contains(&g.as_str())) {
-        let n = leaves.iter().filter(|p| p == &g || p.starts_with(&format!("{g} "))).count();
-        s.push_str(&format!("| `{g}` | {n} | {} |\n", group_about(root, g).replace('|', "/")));
+        let n = leaves
+            .iter()
+            .filter(|p| p == &g || p.starts_with(&format!("{g} ")))
+            .count();
+        s.push_str(&format!(
+            "| `{g}` | {n} | {} |\n",
+            group_about(root, g).replace('|', "/")
+        ));
     }
     s.push_str(&format!(
         "| meta | {} | `commands`, `describe`, `skill`, `errors`, `doctor`, `inspect`: discovery and setup |\n",
         meta_cmds.iter().map(|m| leaves.iter().filter(|p| p == m || p.starts_with(&format!("{m} "))).count()).sum::<usize>()
     ));
-    s.push_str("\nEvery command with arguments, return shape and an example: [COMMANDS.md](COMMANDS.md) \
-(or `ace commands`, `ace describe <command>`).\n");
+    s.push_str(
+        "\nEvery command with arguments, return shape and an example: [COMMANDS.md](COMMANDS.md) \
+(or `ace commands`, `ace describe <command>`).\n",
+    );
     s
 }
 
@@ -680,11 +753,16 @@ and add `matched`/`truncated`.\n");
     for p in leaf_paths(root) {
         let g = p.split_whitespace().next().unwrap_or("").to_owned();
         if g != group {
-            let about = find_cmd(root, &g).and_then(|c| c.get_about()).map(|a| a.to_string()).unwrap_or_default();
+            let about = find_cmd(root, &g)
+                .and_then(|c| c.get_about())
+                .map(|a| a.to_string())
+                .unwrap_or_default();
             s.push_str(&format!("\n## {g}\n\n{about}\n\n"));
             group = g;
         }
-        let Some(d) = describe_json(root, &p, true) else { continue };
+        let Some(d) = describe_json(root, &p, true) else {
+            continue;
+        };
         s.push_str(&format!(
             "### `ace {p}`\n_{}/{}_ — {}\n\n",
             d["backend"].as_str().unwrap_or("?"),
@@ -706,25 +784,50 @@ and add `matched`/`truncated`.\n");
                     extra.push("repeatable".to_owned());
                 }
                 if let Some(c) = a["choices"].as_array() {
-                    extra.push(format!("one of {}", c.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("|")));
+                    extra.push(format!(
+                        "one of {}",
+                        c.iter()
+                            .filter_map(Value::as_str)
+                            .collect::<Vec<_>>()
+                            .join("|")
+                    ));
                 }
                 if let Some(df) = a["default"].as_str() {
                     extra.push(format!("default `{df}`"));
                 }
-                let extra = if extra.is_empty() { String::new() } else { format!(" ({})", extra.join(", ")) };
-                s.push_str(&format!("- `{name}`{extra} — {}\n", a["help"].as_str().unwrap_or("").replace('\n', " ")));
+                let extra = if extra.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({})", extra.join(", "))
+                };
+                s.push_str(&format!(
+                    "- `{name}`{extra} — {}\n",
+                    a["help"].as_str().unwrap_or("").replace('\n', " ")
+                ));
             }
             s.push('\n');
         }
-        s.push_str(&format!("Example: `{}`\n\n", d["example"].as_str().unwrap_or("")));
-        s.push_str(&format!("Returns: `{}`\n\n", d["returns"].as_str().unwrap_or("")));
+        s.push_str(&format!(
+            "Example: `{}`\n\n",
+            d["example"].as_str().unwrap_or("")
+        ));
+        s.push_str(&format!(
+            "Returns: `{}`\n\n",
+            d["returns"].as_str().unwrap_or("")
+        ));
         if let Some(n) = d["notes"].as_str().filter(|n| !n.is_empty()) {
             s.push_str(&format!("Notes: {n}\n\n"));
         }
     }
     s.push_str("## Errors\n\n| code | category | exit | meaning |\n|---|---|---|---|\n");
     for c in ErrorCode::all() {
-        s.push_str(&format!("| `{}` | {} | {} | {} |\n", c.name(), c.category(), c.exit_code(), error_meaning(*c)));
+        s.push_str(&format!(
+            "| `{}` | {} | {} | {} |\n",
+            c.name(),
+            c.category(),
+            c.exit_code(),
+            error_meaning(*c)
+        ));
     }
     s
 }

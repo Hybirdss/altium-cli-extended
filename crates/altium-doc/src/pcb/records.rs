@@ -163,7 +163,11 @@ pub fn component(index: usize, p: Props, keep_raw: bool) -> Component {
         comment: String::new(),
         description: p.str("SOURCEDESCRIPTION"),
         footprint_description: p.str("FOOTPRINTDESCRIPTION"),
-        side: if Layer::from_name(&p.str("LAYER")) == Some(Layer::BOTTOM) { "bottom" } else { "top" },
+        side: if Layer::from_name(&p.str("LAYER")) == Some(Layer::BOTTOM) {
+            "bottom"
+        } else {
+            "top"
+        },
         x: p.len("X").unwrap_or_default(),
         y: p.len("Y").unwrap_or_default(),
         rotation: p.f64("ROTATION").unwrap_or(0.0),
@@ -292,32 +296,54 @@ impl Serialize for Value {
 pub fn value(v: &str) -> Value {
     let t = v.trim();
     if (t.ends_with("mil") || t.ends_with("mm"))
-        && let Some(c) = Coord::parse_len(t) {
-            return Value::Len(c);
-        }
+        && let Some(c) = Coord::parse_len(t)
+    {
+        return Value::Len(c);
+    }
     match t {
         "TRUE" | "True" | "T" => return Value::Bool(true),
         "FALSE" | "False" | "F" => return Value::Bool(false),
         _ => {}
     }
-    if !t.is_empty() && t.chars().all(|c| c.is_ascii_digit() || matches!(c, '-' | '+' | '.' | 'E' | 'e'))
-        && let Ok(n) = t.parse::<f64>() {
-            return Value::Num(n);
-        }
+    if !t.is_empty()
+        && t.chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '-' | '+' | '.' | 'E' | 'e'))
+        && let Ok(n) = t.parse::<f64>()
+    {
+        return Value::Num(n);
+    }
     Value::Text(v.to_owned())
 }
 
 const RULE_COMMON: &[&str] = &[
-    "SELECTION", "LAYER", "LOCKED", "POLYGONOUTLINE", "USERROUTED", "UNIONINDEX", "RULEKIND", "NETSCOPE",
-    "LAYERKIND", "SCOPE1EXPRESSION", "SCOPE2EXPRESSION", "NAME", "ENABLED", "PRIORITY", "COMMENT", "UNIQUEID",
-    "DEFINEDBYLOGICALDOCUMENT", "KEEPOUT",
+    "SELECTION",
+    "LAYER",
+    "LOCKED",
+    "POLYGONOUTLINE",
+    "USERROUTED",
+    "UNIONINDEX",
+    "RULEKIND",
+    "NETSCOPE",
+    "LAYERKIND",
+    "SCOPE1EXPRESSION",
+    "SCOPE2EXPRESSION",
+    "NAME",
+    "ENABLED",
+    "PRIORITY",
+    "COMMENT",
+    "UNIQUEID",
+    "DEFINEDBYLOGICALDOCUMENT",
+    "KEEPOUT",
 ];
 
 fn is_vertex_key(k: &str) -> bool {
     let up = k.to_ascii_uppercase();
-    ["KIND", "VX", "VY", "CX", "CY", "SA", "EA", "R"].iter().any(|p| {
-        up.strip_prefix(p).is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()))
-    })
+    ["KIND", "VX", "VY", "CX", "CY", "SA", "EA", "R"]
+        .iter()
+        .any(|p| {
+            up.strip_prefix(p)
+                .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()))
+        })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -481,7 +507,10 @@ pub fn maybe_codepoints(s: &str) -> String {
 
 pub fn polygon(index: usize, p: Props, keep_raw: bool) -> Polygon {
     let layer = Layer::from_name(&p.str("LAYER")).unwrap_or_default();
-    let net_index = p.int("NET").and_then(|n| u16::try_from(n).ok()).filter(|&n| n != 0xFFFF);
+    let net_index = p
+        .int("NET")
+        .and_then(|n| u16::try_from(n).ok())
+        .filter(|&n| n != 0xFFFF);
     Polygon {
         index,
         name: maybe_codepoints(&p.str("NAME")),
@@ -587,13 +616,18 @@ pub fn dimension(index: usize, p: Props, keep_raw: bool) -> Dimension {
         .unwrap_or_default();
     let refs = (0..p.int("REFERENCES_COUNT").unwrap_or(0))
         .map(|i| DimRef {
-            point: Point::new(l(&format!("REFERENCE{i}POINTX")), l(&format!("REFERENCE{i}POINTY"))),
+            point: Point::new(
+                l(&format!("REFERENCE{i}POINTX")),
+                l(&format!("REFERENCE{i}POINTY")),
+            ),
             object: p.str(&format!("REFERENCE{i}OBJECTSTRING")),
         })
         .collect();
     let mut text_points = vec![];
     for i in 1.. {
-        let (Some(x), Some(y)) = (p.len(&format!("TEXT{i}X")), p.len(&format!("TEXT{i}Y"))) else { break };
+        let (Some(x), Some(y)) = (p.len(&format!("TEXT{i}X")), p.len(&format!("TEXT{i}Y"))) else {
+            break;
+        };
         text_points.push(Point::new(x, y));
     }
     let bbox = match (p.len("LX"), p.len("LY"), p.len("HX"), p.len("HY")) {
@@ -692,7 +726,10 @@ pub fn generic(index: usize, p: &Props) -> Generic {
     Generic {
         index,
         name: p.str("NAME"),
-        properties: p.entries().map(|(k, v)| (k.to_ascii_lowercase(), v.to_owned())).collect(),
+        properties: p
+            .entries()
+            .map(|(k, v)| (k.to_ascii_lowercase(), v.to_owned()))
+            .collect(),
     }
 }
 
@@ -700,7 +737,9 @@ pub fn generic(index: usize, p: &Props) -> Generic {
 /// touched the file; the last one is the version that saved it.
 pub fn file_versions(p: &Props) -> Vec<String> {
     let n = p.int("COUNT").unwrap_or(0);
-    (0..n).filter_map(|i| p.raw(&format!("VER{i}")).map(codepoints)).collect()
+    (0..n)
+        .filter_map(|i| p.raw(&format!("VER{i}")).map(codepoints))
+        .collect()
 }
 
 /// `UniqueIDPrimitiveInformation`: (object type name, primitive index) → unique id.
@@ -708,7 +747,10 @@ pub fn unique_ids(recs: &[(u16, Props)]) -> std::collections::HashMap<(String, u
     recs.iter()
         .filter_map(|(_, p)| {
             let i = p.int("PRIMITIVEINDEX")?;
-            Some(((p.str("PRIMITIVEOBJECTID").to_ascii_lowercase(), i as usize), p.str("UNIQUEID")))
+            Some((
+                (p.str("PRIMITIVEOBJECTID").to_ascii_lowercase(), i as usize),
+                p.str("UNIQUEID"),
+            ))
         })
         .collect()
 }
@@ -736,13 +778,19 @@ mod tests {
 
     #[test]
     fn prefixed_records_and_rules() {
-        let mut buf = rec(Some(2), "|RULEKIND=Width|NAME=W|ENABLED=TRUE|PRIORITY=3|SCOPE1EXPRESSION=All|MINLIMIT=6mil|MAXLIMIT=0.5mm|FOO=TRUE|N=12");
+        let mut buf = rec(
+            Some(2),
+            "|RULEKIND=Width|NAME=W|ENABLED=TRUE|PRIORITY=3|SCOPE1EXPRESSION=All|MINLIMIT=6mil|MAXLIMIT=0.5mm|FOO=TRUE|N=12",
+        );
         buf.extend(rec(Some(40), "|RULEKIND=RoomDefinition|NAME=R1|LAYER=TOP|CONFINEMENTSTYLE=ConfineIn|KIND0=0|VX0=0mil|VY0=0mil|KIND1=0|VX1=100mil|VY1=0mil|KIND2=0|VX2=100mil|VY2=100mil"));
         let (recs, left) = prop_records(&buf, 2);
         assert_eq!(left, 0);
         assert_eq!(recs.len(), 2);
         let r = rule(0, recs[0].0, recs[0].1.clone(), false);
-        assert_eq!((r.kind.as_str(), r.kind_code, r.priority, r.enabled), ("Width", 2, 3, true));
+        assert_eq!(
+            (r.kind.as_str(), r.kind_code, r.priority, r.enabled),
+            ("Width", 2, 3, true)
+        );
         assert!(matches!(r.values["minlimit"], Value::Len(Coord(60_000))));
         assert!(matches!(r.values["maxlimit"], Value::Len(c) if c == Coord::from_mm(0.5)));
         assert!(matches!(r.values["foo"], Value::Bool(true)));
@@ -771,11 +819,17 @@ mod tests {
     #[test]
     fn components_and_classes() {
         let (recs, _) = prop_records(
-            &rec(None, "|LAYER=BOTTOM|X=100mil|Y=200mil|ROTATION= 9.00000000000000E+0001|PATTERN=R0603|SOURCEDESIGNATOR=R1|SOURCEUNIQUEID=\\AB\\CD|COMPONENTKIND=4"),
+            &rec(
+                None,
+                "|LAYER=BOTTOM|X=100mil|Y=200mil|ROTATION= 9.00000000000000E+0001|PATTERN=R0603|SOURCEDESIGNATOR=R1|SOURCEUNIQUEID=\\AB\\CD|COMPONENTKIND=4",
+            ),
             0,
         );
         let c = component(0, recs[0].1.clone(), false);
-        assert_eq!((c.side, c.rotation, c.sch_unique_id.as_str()), ("bottom", 90.0, "CD"));
+        assert_eq!(
+            (c.side, c.rotation, c.sch_unique_id.as_str()),
+            ("bottom", 90.0, "CD")
+        );
         assert_eq!(c.kind, Some("Net Tie"));
         let (recs, _) = prop_records(&rec(None, "|NAME=PWR|KIND=0|M0=VCC|M1=GND"), 0);
         let k = class(0, recs[0].1.clone(), "Classes6", false);
@@ -786,7 +840,11 @@ mod tests {
     fn codepoint_names() {
         assert_eq!(maybe_codepoints("71,78,68,95,53,86"), "GND_5V");
         assert_eq!(maybe_codepoints("Top Pour"), "Top Pour");
-        assert_eq!(maybe_codepoints("5"), "5", "control characters are not decoded");
+        assert_eq!(
+            maybe_codepoints("5"),
+            "5",
+            "control characters are not decoded"
+        );
         assert_eq!(maybe_codepoints(""), "");
     }
 }

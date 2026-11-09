@@ -50,9 +50,13 @@ pub fn home() -> PathBuf {
 /// (or `~/.config/...`) elsewhere.
 pub fn path() -> PathBuf {
     let base = if cfg!(windows) {
-        std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(|| home().join("AppData/Roaming"))
+        std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home().join("AppData/Roaming"))
     } else {
-        std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".config"))
+        std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home().join(".config"))
     };
     base.join("altium-cli-extended/designer.json")
 }
@@ -60,7 +64,10 @@ pub fn path() -> PathBuf {
 /// Per-user state (locks, sync manifests): `%LOCALAPPDATA%\altium-cli-extended` or `~/.local/state/altium-cli-extended`.
 pub fn state_dir() -> PathBuf {
     if cfg!(windows) {
-        std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(|| home().join("AppData/Local")).join("altium-cli-extended")
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home().join("AppData/Local"))
+            .join("altium-cli-extended")
     } else {
         home().join(".local/state/altium-cli-extended")
     }

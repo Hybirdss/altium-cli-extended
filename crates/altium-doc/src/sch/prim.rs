@@ -74,7 +74,10 @@ impl Pin {
         let location = rt::location(p);
         let length = p.sch("PINLENGTH");
         let (dx, dy) = rt::orientation_dir(orient);
-        let hot_end = Point::new(Coord(location.x.0 + dx * length.0), Coord(location.y.0 + dy * length.0));
+        let hot_end = Point::new(
+            Coord(location.x.0 + dx * length.0),
+            Coord(location.y.0 + dy * length.0),
+        );
         let mut symbols = IndexMap::new();
         for (key, label) in [
             ("SYMBOL_INNER", "inner"),
@@ -84,7 +87,12 @@ impl Pin {
         ] {
             let v = p.int_or(key, 0);
             if v != 0 {
-                symbols.insert(label.to_owned(), rt::pin_symbol(v).map(str::to_owned).unwrap_or_else(|| v.to_string()));
+                symbols.insert(
+                    label.to_owned(),
+                    rt::pin_symbol(v)
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| v.to_string()),
+                );
             }
         }
         let opt = |k: &str| p.get(k).filter(|s| !s.is_empty());
@@ -94,7 +102,9 @@ impl Pin {
             designator: p.str("DESIGNATOR"),
             name: p.str("NAME"),
             description: opt("DESCRIPTION"),
-            electrical: rt::pin_electrical(electrical).map(str::to_owned).unwrap_or_else(|| format!("unknown_{electrical}")),
+            electrical: rt::pin_electrical(electrical)
+                .map(str::to_owned)
+                .unwrap_or_else(|| format!("unknown_{electrical}")),
             part_id: p.int_or("OWNERPARTID", 0),
             display_mode: p.int_or("OWNERPARTDISPLAYMODE", 0),
             location,
@@ -174,7 +184,9 @@ pub fn resolve_params(params: &mut [Parameter], fallback: &[Parameter]) {
         .map(|p| (p.name.to_ascii_lowercase(), p.value.clone()))
         .collect();
     for p in params.iter_mut() {
-        let Some(target) = p.value.strip_prefix('=') else { continue };
+        let Some(target) = p.value.strip_prefix('=') else {
+            continue;
+        };
         let target = target.trim().to_ascii_lowercase();
         if target.is_empty() {
             continue;
@@ -182,7 +194,9 @@ pub fn resolve_params(params: &mut [Parameter], fallback: &[Parameter]) {
         // One level of indirection is what Altium shows; follow up to 4 to be safe.
         let mut cur = target;
         for _ in 0..4 {
-            let Some((_, v)) = lookup.iter().find(|(n, _)| *n == cur) else { break };
+            let Some((_, v)) = lookup.iter().find(|(n, _)| *n == cur) else {
+                break;
+            };
             match v.strip_prefix('=') {
                 Some(next) => cur = next.trim().to_ascii_lowercase(),
                 None => {
@@ -257,7 +271,9 @@ impl Model {
             .map(|i| ModelDataFile {
                 kind: p.str(&format!("MODELDATAFILEKIND{i}")),
                 entity: p.str(&format!("MODELDATAFILEENTITY{i}")),
-                file: p.get(&format!("MODELDATAFILE{i}")).filter(|s| !s.is_empty()),
+                file: p
+                    .get(&format!("MODELDATAFILE{i}"))
+                    .filter(|s| !s.is_empty()),
             })
             .collect();
         Model {
@@ -335,10 +351,22 @@ impl Primitive {
             corner: has_corner.then(|| rt::corner(p)),
             points: rt::points(p),
             radius: has_r.then(|| p.sch("RADIUS")),
-            secondary_radius: (p.has("SECONDARYRADIUS") || p.has("SECONDARYRADIUS_FRAC")).then(|| p.sch("SECONDARYRADIUS")),
-            start_angle: if is_arc { Some(p.f64("STARTANGLE").unwrap_or(0.0)) } else { None },
-            end_angle: if is_arc { Some(p.f64("ENDANGLE").unwrap_or(0.0)) } else { None },
-            text: p.get("TEXT").filter(|s| !s.is_empty()).map(|s| rt::frame_text(&s)),
+            secondary_radius: (p.has("SECONDARYRADIUS") || p.has("SECONDARYRADIUS_FRAC"))
+                .then(|| p.sch("SECONDARYRADIUS")),
+            start_angle: if is_arc {
+                Some(p.f64("STARTANGLE").unwrap_or(0.0))
+            } else {
+                None
+            },
+            end_angle: if is_arc {
+                Some(p.f64("ENDANGLE").unwrap_or(0.0))
+            } else {
+                None
+            },
+            text: p
+                .get("TEXT")
+                .filter(|s| !s.is_empty())
+                .map(|s| rt::frame_text(&s)),
             filled: p.bool("ISSOLID"),
             raw: keep_raw.then(|| p.clone()),
         }
@@ -355,7 +383,10 @@ mod tests {
         // the wire ends at x=710.
         let p = Props::parse(b"|RECORD=2|OWNERINDEX=30|OWNERPARTID=1|ELECTRICAL=4|PINCONGLOMERATE=58|PINLENGTH=30|LOCATION.X=740|LOCATION.Y=400|NAME=5V|DESIGNATOR=5V");
         let pin = Pin::from_props(31, &p, false);
-        assert_eq!(pin.hot_end, Point::new(Coord::from_sch(710, 0), Coord::from_sch(400, 0)));
+        assert_eq!(
+            pin.hot_end,
+            Point::new(Coord::from_sch(710, 0), Coord::from_sch(400, 0))
+        );
         assert_eq!(pin.orientation, 180.0);
         assert_eq!(pin.electrical, "passive");
         assert!(pin.show_name && pin.show_designator && !pin.hidden);
@@ -363,8 +394,18 @@ mod tests {
 
     #[test]
     fn param_refs() {
-        let mk = |i, n: &str, v: &str| Parameter::from_props(i, &Props::parse(format!("|RECORD=41|NAME={n}|TEXT={v}").as_bytes()), false);
-        let mut ps = vec![mk(1, "Comment", "= Value"), mk(2, "Value", "10k"), mk(3, "X", "=Missing")];
+        let mk = |i, n: &str, v: &str| {
+            Parameter::from_props(
+                i,
+                &Props::parse(format!("|RECORD=41|NAME={n}|TEXT={v}").as_bytes()),
+                false,
+            )
+        };
+        let mut ps = vec![
+            mk(1, "Comment", "= Value"),
+            mk(2, "Value", "10k"),
+            mk(3, "X", "=Missing"),
+        ];
         resolve_params(&mut ps, &[]);
         assert_eq!(ps[0].effective(), "10k");
         assert_eq!(ps[2].resolved, None);

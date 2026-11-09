@@ -21,7 +21,16 @@ fn linked_comments_require_explicit_literal_and_preview_preserves_bytes() {
     ok(&["sch", "set-param", &f, "P8", "Value", "22k"]);
     let linked = ok(&["sch", "component", &f, "P8"]);
     assert_eq!(linked["items"][0]["comment"], "22k");
-    assert!(linked["items"][0]["parameters"].as_array().unwrap().iter().any(|p| p["name"] == "Comment" && p["value"] == "=Value"));
+    assert!(
+        linked["items"][0]["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["name"] == "Comment" && p["value"] == "=Value")
+    );
     ok(&["sch", "set-comment", &f, "P8", "22k", "--literal"]);
-    assert_eq!(ok(&["sch", "component", &f, "P8"])["items"][0]["comment"], "22k");
+    assert_eq!(
+        ok(&["sch", "component", &f, "P8"])["items"][0]["comment"],
+        "22k"
+    );
 }

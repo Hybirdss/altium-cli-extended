@@ -22,15 +22,25 @@ fn outjob_rejects_values_that_do_not_roundtrip() {
                 call.push("--dry-run");
             }
             let error = err(&call, "UNSAFE");
-            assert!(error["error"]["hint"].as_str().is_some_and(|h| !h.is_empty()));
+            assert!(
+                error["error"]["hint"]
+                    .as_str()
+                    .is_some_and(|h| !h.is_empty())
+            );
             assert_eq!(std::fs::read(&file).unwrap(), original);
             assert!(!dir.join("test.OutJob.bak").exists());
         }
     }
     ok(&["outjob", "set-document", &f, "all", "QA.PcbDoc"]);
-    assert_eq!(ok(&["outjob", "outputs", &f])["items"][0]["document"], "QA.PcbDoc");
+    assert_eq!(
+        ok(&["outjob", "outputs", &f])["items"][0]["document"],
+        "QA.PcbDoc"
+    );
     ok(&["outjob", "set-variant", &f, "QA"]);
     assert_eq!(ok(&["outjob", "info", &f])["group"]["VariantName"], "QA");
     ok(&["outjob", "enable", &f, "1", "--medium", "1"]);
-    assert_eq!(ok(&["outjob", "outputs", &f])["items"][0]["enabled_for"], serde_json::json!(["Files"]));
+    assert_eq!(
+        ok(&["outjob", "outputs", &f])["items"][0]["enabled_for"],
+        serde_json::json!(["Files"])
+    );
 }

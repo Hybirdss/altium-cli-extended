@@ -19,7 +19,9 @@ use altium_core::error::{Error, Result};
 pub fn write_stdout(text: &str) {
     use std::io::Write;
     if let Err(e) = std::io::stdout().lock().write_all(text.as_bytes()) {
-        if e.kind() == std::io::ErrorKind::BrokenPipe { std::process::exit(0); }
+        if e.kind() == std::io::ErrorKind::BrokenPipe {
+            std::process::exit(0);
+        }
         eprintln!("cannot write stdout: {e}");
         std::process::exit(altium_core::ErrorCode::Io.exit_code());
     }
@@ -37,7 +39,11 @@ pub struct Out {
 
 impl Out {
     pub fn new(data: impl Serialize) -> Result<Out> {
-        Ok(Out { data: serde_json::to_value(data)?, warnings: vec![], exit_code: 0 })
+        Ok(Out {
+            data: serde_json::to_value(data)?,
+            warnings: vec![],
+            exit_code: 0,
+        })
     }
     pub fn gate(mut self, fail_on: &str, matched: usize) -> Self {
         self.data["gate"] = json!({"fail_on": fail_on, "matched": matched,
@@ -118,7 +124,10 @@ impl Filter {
         if key.is_empty() {
             return Err(bad());
         }
-        Ok(Filter { key: key.to_owned(), op })
+        Ok(Filter {
+            key: key.to_owned(),
+            op,
+        })
     }
 
     fn matches(&self, item: &Value) -> bool {
@@ -141,9 +150,11 @@ fn lookup<'a>(v: &'a Value, dotted: &str) -> Option<&'a Value> {
     let mut cur = v;
     for part in dotted.split('.') {
         cur = match cur {
-            Value::Object(m) => m
-                .get(part)
-                .or_else(|| m.iter().find(|(k, _)| k.eq_ignore_ascii_case(part)).map(|(_, v)| v))?,
+            Value::Object(m) => m.get(part).or_else(|| {
+                m.iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(part))
+                    .map(|(_, v)| v)
+            })?,
             _ => return None,
         };
     }
@@ -153,34 +164,80 @@ fn lookup<'a>(v: &'a Value, dotted: &str) -> Option<&'a Value> {
 impl Shape {
     /// Explain empty queries and unknown fields before projection destroys the evidence.
     pub fn diagnostics(&self, data: &Value) -> (Vec<String>, Value) {
-        let items = data.get("items").and_then(Value::as_array).or_else(|| data.as_array());
+        let items = data
+            .get("items")
+            .and_then(Value::as_array)
+            .or_else(|| data.as_array());
         let mut warnings = vec![];
         let mut similar = Map::new();
-        let rows: Vec<&Value> = items.map(|rows| rows.iter().collect()).unwrap_or_else(|| vec![data]);
-        let unknown: Vec<_> = self.fields.iter().filter(|field| !rows.is_empty() && rows.iter().all(|r| lookup(r, field).is_none())).collect();
+        let rows: Vec<&Value> = items
+            .map(|rows| rows.iter().collect())
+            .unwrap_or_else(|| vec![data]);
+        let unknown: Vec<_> = self
+            .fields
+            .iter()
+            .filter(|field| !rows.is_empty() && rows.iter().all(|r| lookup(r, field).is_none()))
+            .collect();
         if !unknown.is_empty() {
-            let valid: std::collections::BTreeSet<_> = rows.iter().filter_map(|r| r.as_object()).flat_map(|r| r.keys()).collect();
-            warnings.push(format!("unknown field(s): {}; valid: {}", unknown.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "), valid.into_iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")));
+            let valid: std::collections::BTreeSet<_> = rows
+                .iter()
+                .filter_map(|r| r.as_object())
+                .flat_map(|r| r.keys())
+                .collect();
+            warnings.push(format!(
+                "unknown field(s): {}; valid: {}",
+                unknown
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                valid
+                    .into_iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
         if let Some(items) = items {
-            if !items.is_empty() && !self.filters.is_empty() && !items.iter().any(|it| self.filters.iter().all(|f| f.matches(it))) {
+            if !items.is_empty()
+                && !self.filters.is_empty()
+                && !items
+                    .iter()
+                    .any(|it| self.filters.iter().all(|f| f.matches(it)))
+            {
                 warnings.push("no items satisfy all --where filters; relax a filter or inspect the unfiltered list".into());
                 for filter in &self.filters {
-                    if items.iter().any(|it| filter.matches(it)) { continue; }
+                    if items.iter().any(|it| filter.matches(it)) {
+                        continue;
+                    }
                     if let FilterOp::Eq(want) = &filter.op {
-                        let available: std::collections::BTreeSet<_> = items.iter().filter_map(|it| lookup(it, &filter.key).and_then(Value::as_str)).collect();
+                        let available: std::collections::BTreeSet<_> = items
+                            .iter()
+                            .filter_map(|it| lookup(it, &filter.key).and_then(Value::as_str))
+                            .collect();
                         let names: Vec<_> = available.into_iter().take(20).collect();
                         if filter.key == "designator" {
-                            warnings.push(format!("no part with designator {want} (parts: {})", names.join(", ")));
+                            warnings.push(format!(
+                                "no part with designator {want} (parts: {})",
+                                names.join(", ")
+                            ));
                         } else {
-                            warnings.push(format!("no matches for {}={want}; available: {}", filter.key, names.join(", ")));
+                            warnings.push(format!(
+                                "no matches for {}={want}; available: {}",
+                                filter.key,
+                                names.join(", ")
+                            ));
                         }
-                        similar.insert(filter.key.clone(), json!(names.into_iter().take(5).collect::<Vec<_>>()));
+                        similar.insert(
+                            filter.key.clone(),
+                            json!(names.into_iter().take(5).collect::<Vec<_>>()),
+                        );
                     }
                 }
             }
         } else if !self.filters.is_empty() {
-            warnings.push("--where applies to list items; this command returns a single object".into());
+            warnings
+                .push("--where applies to list items; this command returns a single object".into());
         }
         (warnings, Value::Object(similar))
     }
@@ -190,7 +247,9 @@ impl Shape {
         if !self.fields.is_empty() && data.is_object() && data.get("items").is_none() {
             let mut projected = Map::new();
             for field in &self.fields {
-                if let Some(value) = lookup(data, field) { projected.insert(field.clone(), value.clone()); }
+                if let Some(value) = lookup(data, field) {
+                    projected.insert(field.clone(), value.clone());
+                }
             }
             *data = Value::Object(projected);
             return;
@@ -269,24 +328,46 @@ fn scalar(v: &Value) -> String {
 fn table(items: &[Value]) -> String {
     fn flatten(prefix: &str, value: &Value, fields: &mut Map<String, Value>) {
         match value {
-            Value::Object(object) => for (key, value) in object {
-                let name = if prefix.is_empty() { key.clone() } else { format!("{prefix}.{key}") };
-                flatten(&name, value, fields);
-            },
-            Value::Array(rows) if rows.iter().any(|v| v.is_object() || v.is_array()) => {},
-            _ => { fields.insert(prefix.into(), value.clone()); }
+            Value::Object(object) => {
+                for (key, value) in object {
+                    let name = if prefix.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{prefix}.{key}")
+                    };
+                    flatten(&name, value, fields);
+                }
+            }
+            Value::Array(rows) if rows.iter().any(|v| v.is_object() || v.is_array()) => {}
+            _ => {
+                fields.insert(prefix.into(), value.clone());
+            }
         }
     }
-    let rows: Vec<_> = items.iter().map(|item| {
-        if !item.is_object() { return item.clone(); }
-        let mut fields = Map::new(); flatten("", item, &mut fields); Value::Object(fields)
-    }).collect();
+    let rows: Vec<_> = items
+        .iter()
+        .map(|item| {
+            if !item.is_object() {
+                return item.clone();
+            }
+            let mut fields = Map::new();
+            flatten("", item, &mut fields);
+            Value::Object(fields)
+        })
+        .collect();
     let mut out = flat_table(&rows);
     for (index, item) in items.iter().enumerate() {
         if let Some(object) = item.as_object() {
             for (key, value) in object {
-                if let Some(rows) = value.as_array().filter(|rows| rows.iter().any(Value::is_object)) {
-                    let label = item.get("designator").or_else(|| item.get("name")).map(scalar).unwrap_or_else(|| index.to_string());
+                if let Some(rows) = value
+                    .as_array()
+                    .filter(|rows| rows.iter().any(Value::is_object))
+                {
+                    let label = item
+                        .get("designator")
+                        .or_else(|| item.get("name"))
+                        .map(scalar)
+                        .unwrap_or_else(|| index.to_string());
                     out.push_str(&format!("\n{label} {key}:\n"));
                     out.push_str(&table(rows));
                 }
@@ -312,11 +393,22 @@ fn flat_table(items: &[Value]) -> String {
     }
     let cell = |it: &Value, c: &str| {
         let s = scalar(it.get(c).unwrap_or(&Value::Null));
-        if s.chars().count() > 48 { s.chars().take(45).collect::<String>() + "..." } else { s }
+        if s.chars().count() > 48 {
+            s.chars().take(45).collect::<String>() + "..."
+        } else {
+            s
+        }
     };
     let widths: Vec<usize> = cols
         .iter()
-        .map(|c| items.iter().map(|it| cell(it, c).chars().count()).max().unwrap_or(0).max(c.len()))
+        .map(|c| {
+            items
+                .iter()
+                .map(|it| cell(it, c).chars().count())
+                .max()
+                .unwrap_or(0)
+                .max(c.len())
+        })
         .collect();
     let mut out = String::new();
     let line = |vals: Vec<String>| {
@@ -349,7 +441,10 @@ mod tests {
             {"designator":"C1","value":"100n","pad":{"net":"GND"}}]});
         let s = Shape {
             fields: vec!["designator".into()],
-            filters: vec![Filter::parse("pad.net=gnd").unwrap(), Filter::parse("designator~^R").unwrap()],
+            filters: vec![
+                Filter::parse("pad.net=gnd").unwrap(),
+                Filter::parse("designator~^R").unwrap(),
+            ],
             limit: None,
         };
         s.apply(&mut d);

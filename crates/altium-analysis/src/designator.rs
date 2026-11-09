@@ -5,9 +5,18 @@ use std::cmp::Ordering;
 /// Split `R12A` into (`R`, 12, `A`). Designators without a number sort by text.
 pub fn split(d: &str) -> (String, Option<u64>, String) {
     let start = d.find(|c: char| c.is_ascii_digit());
-    let Some(s) = start else { return (d.to_owned(), None, String::new()) };
-    let end = d[s..].find(|c: char| !c.is_ascii_digit()).map(|e| s + e).unwrap_or(d.len());
-    (d[..s].to_owned(), d[s..end].parse().ok(), d[end..].to_owned())
+    let Some(s) = start else {
+        return (d.to_owned(), None, String::new());
+    };
+    let end = d[s..]
+        .find(|c: char| !c.is_ascii_digit())
+        .map(|e| s + e)
+        .unwrap_or(d.len());
+    (
+        d[..s].to_owned(),
+        d[s..end].parse().ok(),
+        d[end..].to_owned(),
+    )
 }
 
 /// Natural order: prefix, then number, then suffix.
@@ -65,7 +74,10 @@ mod tests {
 
     #[test]
     fn order_and_compress() {
-        let mut v: Vec<String> = ["R10", "R2", "R1", "R3", "C1", "R7", "U1A"].iter().map(|s| s.to_string()).collect();
+        let mut v: Vec<String> = ["R10", "R2", "R1", "R3", "C1", "R7", "U1A"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         sort(&mut v);
         assert_eq!(v, ["C1", "R1", "R2", "R3", "R7", "R10", "U1A"]);
         assert_eq!(compress(&v), "C1, R1-R3, R7, R10, U1A");

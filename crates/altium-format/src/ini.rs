@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use altium_core::error::{Error, ErrorCode, Result};
 use crate::props::{check_mixing, codepage, decode_ansi};
+use altium_core::error::{Error, ErrorCode, Result};
 
 const BOM: &[u8] = b"\xef\xbb\xbf";
 
@@ -53,7 +53,11 @@ struct Src {
 
 impl Entry {
     pub fn new(key: impl Into<String>, value: impl Into<String>) -> Entry {
-        Entry { key: key.into(), value: value.into(), src: None }
+        Entry {
+            key: key.into(),
+            value: value.into(),
+            src: None,
+        }
     }
 
     /// The line to write: the bytes read for a key or value that still says the same thing,
@@ -73,10 +77,15 @@ impl Entry {
 
 impl Section {
     pub fn new(name: impl Into<String>) -> Section {
-        Section { name: name.into(), ..Section::default() }
+        Section {
+            name: name.into(),
+            ..Section::default()
+        }
     }
     pub fn entry(&self, key: &str) -> Option<&Entry> {
-        self.entries.iter().find(|e| e.key.eq_ignore_ascii_case(key))
+        self.entries
+            .iter()
+            .find(|e| e.key.eq_ignore_ascii_case(key))
     }
     pub fn get(&self, key: &str) -> Option<&str> {
         self.entry(key).map(|e| e.value.as_str())
@@ -88,10 +97,17 @@ impl Section {
         self.get(key)?.trim().parse().ok()
     }
     pub fn bool(&self, key: &str) -> bool {
-        matches!(self.get(key).map(str::trim), Some("1" | "True" | "TRUE" | "T"))
+        matches!(
+            self.get(key).map(str::trim),
+            Some("1" | "True" | "TRUE" | "T")
+        )
     }
     pub fn set(&mut self, key: &str, val: &str) {
-        if let Some(e) = self.entries.iter_mut().find(|e| e.key.eq_ignore_ascii_case(key)) {
+        if let Some(e) = self
+            .entries
+            .iter_mut()
+            .find(|e| e.key.eq_ignore_ascii_case(key))
+        {
             e.value = val.to_owned();
         } else {
             self.entries.push(Entry::new(key, val));
@@ -168,21 +184,36 @@ impl Ini {
         let bom = bytes.starts_with(BOM);
         let mut rest = bytes.strip_prefix(BOM).unwrap_or(bytes);
         let crlf = rest.windows(2).any(|w| w == b"\r\n");
-        let mut ini = Ini { sections: vec![], bom, crlf, tail: vec![] };
+        let mut ini = Ini {
+            sections: vec![],
+            bom,
+            crlf,
+            tail: vec![],
+        };
         // Lines before the first header go in an unnamed section.
         let mut cur = Section::default();
         let mut lead = Vec::new();
         let len = rest.len();
         while !rest.is_empty() {
             let at = len - rest.len();
-            let (line, nl, next): (&[u8], &'static [u8], &[u8]) = match rest.iter().position(|&b| b == b'\n') {
-                Some(i) if i > 0 && rest[i - 1] == b'\r' => (&rest[..i - 1], b"\r\n", &rest[i + 1..]),
-                Some(i) => (&rest[..i], b"\n", &rest[i + 1..]),
-                None => (rest, b"", &[]),
-            };
+            let (line, nl, next): (&[u8], &'static [u8], &[u8]) =
+                match rest.iter().position(|&b| b == b'\n') {
+                    Some(i) if i > 0 && rest[i - 1] == b'\r' => {
+                        (&rest[..i - 1], b"\r\n", &rest[i + 1..])
+                    }
+                    Some(i) => (&rest[..i], b"\n", &rest[i + 1..]),
+                    None => (rest, b"", &[]),
+                };
             rest = next;
             let text = decode_ansi(line);
-            let src = |lead: &mut Vec<u8>| Some(Src { at, lead: std::mem::take(lead), line: line.to_vec(), nl });
+            let src = |lead: &mut Vec<u8>| {
+                Some(Src {
+                    at,
+                    lead: std::mem::take(lead),
+                    line: line.to_vec(),
+                    nl,
+                })
+            };
             if let Some(name) = header(&text) {
                 if !cur.name.is_empty() || !cur.entries.is_empty() || cur.src.is_some() {
                     ini.sections.push(std::mem::take(&mut cur));
@@ -190,7 +221,11 @@ impl Ini {
                 cur.name = name.to_owned();
                 cur.src = src(&mut lead);
             } else if let Some((k, v)) = text.split_once('=') {
-                cur.entries.push(Entry { key: k.to_owned(), value: v.to_owned(), src: src(&mut lead) });
+                cur.entries.push(Entry {
+                    key: k.to_owned(),
+                    value: v.to_owned(),
+                    src: src(&mut lead),
+                });
             } else {
                 lead.extend(line);
                 lead.extend(nl);
@@ -204,11 +239,15 @@ impl Ini {
     }
 
     pub fn section(&self, name: &str) -> Option<&Section> {
-        self.sections.iter().find(|s| s.name.eq_ignore_ascii_case(name))
+        self.sections
+            .iter()
+            .find(|s| s.name.eq_ignore_ascii_case(name))
     }
 
     pub fn section_mut(&mut self, name: &str) -> Option<&mut Section> {
-        self.sections.iter_mut().find(|s| s.name.eq_ignore_ascii_case(name))
+        self.sections
+            .iter_mut()
+            .find(|s| s.name.eq_ignore_ascii_case(name))
     }
 
     /// Sections named `<prefix><N>` in numeric order (`Document1`, `Document2`...).
@@ -232,10 +271,16 @@ impl Ini {
     /// page.
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let nl: &'static [u8] = if self.crlf { b"\r\n" } else { b"\n" };
-        let mut w = Writer { out: if self.bom { BOM.to_vec() } else { Vec::new() }, nl, open: false };
+        let mut w = Writer {
+            out: if self.bom { BOM.to_vec() } else { Vec::new() },
+            nl,
+            open: false,
+        };
         for (i, s) in self.sections.iter().enumerate() {
             match &s.src {
-                Some(src) if header(&decode_ansi(&src.line)) == Some(s.name.as_str()) => w.put(&src.lead, &src.line, src.nl),
+                Some(src) if header(&decode_ansi(&src.line)) == Some(s.name.as_str()) => {
+                    w.put(&src.lead, &src.line, src.nl)
+                }
                 Some(src) => w.put(&src.lead, &encode(&format!("[{}]", s.name))?, src.nl),
                 None if !s.name.is_empty() => {
                     if i > 0 {
@@ -262,7 +307,15 @@ impl Ini {
     fn text(&self) -> Vec<(&str, Vec<(&str, &str)>)> {
         self.sections
             .iter()
-            .map(|s| (s.name.as_str(), s.entries.iter().map(|e| (e.key.as_str(), e.value.as_str())).collect()))
+            .map(|s| {
+                (
+                    s.name.as_str(),
+                    s.entries
+                        .iter()
+                        .map(|e| (e.key.as_str(), e.value.as_str()))
+                        .collect(),
+                )
+            })
             .collect()
     }
 
@@ -294,7 +347,11 @@ impl Ini {
         }
         let before = Ini::parse(original);
         for s in &before.sections {
-            let items = s.src.iter().map(|src| ("the header", src)).chain(s.entries.iter().filter_map(|e| Some((e.key.as_str(), e.src.as_ref()?))));
+            let items = s.src.iter().map(|src| ("the header", src)).chain(
+                s.entries
+                    .iter()
+                    .filter_map(|e| Some((e.key.as_str(), e.src.as_ref()?))),
+            );
             for (what, src) in items {
                 if let Some(new) = kept.remove(&src.at)
                     && (new.lead != src.lead || new.line != src.line)
@@ -305,7 +362,11 @@ impl Ini {
             }
         }
         if !kept.is_empty() || back.tail != before.tail {
-            return Err(Error::new(ErrorCode::Unsafe, "the file changed after it was read; nothing written").hint("re-run the command"));
+            return Err(Error::new(
+                ErrorCode::Unsafe,
+                "the file changed after it was read; nothing written",
+            )
+            .hint("re-run the command"));
         }
         Ok(bytes)
     }
@@ -328,7 +389,10 @@ mod tests {
     fn keep_bom_on_edit() {
         let mut ini = Ini::parse(b"\xef\xbb\xbf[Design]\r\nVersion=1.0\r\n");
         ini.section_mut("Design").unwrap().set("Version", "2.0");
-        assert_eq!(ini.to_bytes().unwrap(), b"\xef\xbb\xbf[Design]\r\nVersion=2.0\r\n");
+        assert_eq!(
+            ini.to_bytes().unwrap(),
+            b"\xef\xbb\xbf[Design]\r\nVersion=2.0\r\n"
+        );
     }
 
     #[test]
@@ -345,8 +409,13 @@ mod tests {
         let read = b"[Design]\r\nVersion=1.0\r\nTitle=A\r\n";
         let mut ini = Ini::parse(read);
         ini.section_mut("Design").unwrap().set("Version", "2.0");
-        assert_eq!(ini.write_over(read).unwrap(), b"[Design]\r\nVersion=2.0\r\nTitle=A\r\n");
-        let error = ini.write_over(b"[Design]\r\nVersion=1.0\r\nTitle=B\r\n").unwrap_err();
+        assert_eq!(
+            ini.write_over(read).unwrap(),
+            b"[Design]\r\nVersion=2.0\r\nTitle=A\r\n"
+        );
+        let error = ini
+            .write_over(b"[Design]\r\nVersion=1.0\r\nTitle=B\r\n")
+            .unwrap_err();
         assert_eq!(error.code, ErrorCode::Unsafe);
     }
 }

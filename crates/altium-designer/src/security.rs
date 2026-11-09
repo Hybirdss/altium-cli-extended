@@ -44,15 +44,26 @@ struct Rule {
 
 pub(crate) fn check_acl(json: &str) -> Result<()> {
     let rules: Vec<Rule> = serde_json::from_str(json.trim()).map_err(|e| {
-        Error::new(ErrorCode::Unsafe, format!("cannot verify desktop runner ACL: {e}"))
-            .hint("run `ace designer setup --apply runner` to protect the runner tree")
+        Error::new(
+            ErrorCode::Unsafe,
+            format!("cannot verify desktop runner ACL: {e}"),
+        )
+        .hint("run `ace designer setup --apply runner` to protect the runner tree")
     })?;
     // WriteData, AppendData, WriteEA, DeleteChild, WriteAttributes, Delete, WriteDac, WriteOwner.
     let write = 2 | 4 | 16 | 64 | 256 | 65536 | 262144 | 524288;
     for rule in rules {
-        if matches!(rule.sid.as_str(), "S-1-5-32-545" | "S-1-5-11" | "S-1-1-0") && rule.rights & write != 0 {
-            return Err(Error::new(ErrorCode::Unsafe, format!("desktop runner tree is writable by {}: {}", rule.sid, rule.path))
-                .hint("run `ace designer setup --apply runner`; no command was queued"));
+        if matches!(rule.sid.as_str(), "S-1-5-32-545" | "S-1-5-11" | "S-1-1-0")
+            && rule.rights & write != 0
+        {
+            return Err(Error::new(
+                ErrorCode::Unsafe,
+                format!(
+                    "desktop runner tree is writable by {}: {}",
+                    rule.sid, rule.path
+                ),
+            )
+            .hint("run `ace designer setup --apply runner`; no command was queued"));
         }
     }
     Ok(())
@@ -67,9 +78,17 @@ mod tests {
         for sid in ["S-1-5-32-545", "S-1-5-11", "S-1-1-0"] {
             for rights in [2, 4, 16, 64, 256, 65536, 262144, 524288, 2032127] {
                 let rules = serde_json::json!([{"path":"queue", "sid":sid, "rights":rights}]);
-                assert_eq!(check_acl(&rules.to_string()).unwrap_err().code, ErrorCode::Unsafe);
+                assert_eq!(
+                    check_acl(&rules.to_string()).unwrap_err().code,
+                    ErrorCode::Unsafe
+                );
             }
-            assert!(check_acl(&serde_json::json!([{"path":"queue", "sid":sid, "rights":131241}]).to_string()).is_ok());
+            assert!(
+                check_acl(
+                    &serde_json::json!([{"path":"queue", "sid":sid, "rights":131241}]).to_string()
+                )
+                .is_ok()
+            );
         }
         assert!(check_acl(r#"[{"path":"queue","sid":"S-1-5-18","rights":2032127}]"#).is_ok());
         assert!(check_acl("invalid").is_err());

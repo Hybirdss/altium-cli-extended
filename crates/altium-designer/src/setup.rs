@@ -41,7 +41,11 @@ impl Cmd {
     /// What to type in a POSIX shell.
     pub fn display(&self) -> String {
         match self {
-            Cmd::Run(argv) => argv.iter().map(|a| sh_quote(a)).collect::<Vec<_>>().join(" "),
+            Cmd::Run(argv) => argv
+                .iter()
+                .map(|a| sh_quote(a))
+                .collect::<Vec<_>>()
+                .join(" "),
             Cmd::Say(s) => s.clone(),
         }
     }
@@ -63,7 +67,10 @@ fn say(s: impl Into<String>) -> Cmd {
 
 fn sh_quote(a: &OsStr) -> String {
     let s = a.to_string_lossy();
-    if !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"@%+=:,./_-".contains(&b)) {
+    if !s.is_empty()
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"@%+=:,./_-".contains(&b))
+    {
         s.into_owned()
     } else {
         format!("'{}'", s.replace('\'', r"'\''"))
@@ -81,7 +88,15 @@ fn unzip_cmd(zip: &Path) -> Cmd {
 }
 
 fn bottles_cli(sub: &str, bottle: &str, rest: &[&dyn AsRef<OsStr>]) -> Cmd {
-    let mut argv: Vec<&dyn AsRef<OsStr>> = vec![&"flatpak", &"run", &"--command=bottles-cli", &BOTTLES_APP, &sub, &"-b", &bottle];
+    let mut argv: Vec<&dyn AsRef<OsStr>> = vec![
+        &"flatpak",
+        &"run",
+        &"--command=bottles-cli",
+        &BOTTLES_APP,
+        &sub,
+        &"-b",
+        &bottle,
+    ];
     argv.extend_from_slice(rest);
     run(&argv)
 }
@@ -91,7 +106,10 @@ pub fn fixes_dir() -> PathBuf {
 }
 
 fn has(bin: &str) -> bool {
-    Command::new("sh").args(["-c", &format!("command -v {bin} >/dev/null 2>&1")]).status().is_ok_and(|s| s.success())
+    Command::new("sh")
+        .args(["-c", &format!("command -v {bin} >/dev/null 2>&1")])
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 fn bottles_installed() -> bool {
@@ -111,7 +129,10 @@ pub fn offline_installers() -> Vec<PathBuf> {
         .map(|e| e.path())
         .filter(|p| {
             p.is_dir()
-                && p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("OfflineSetup_Altium_Designer"))
+                && p.file_name().is_some_and(|n| {
+                    n.to_string_lossy()
+                        .starts_with("OfflineSetup_Altium_Designer")
+                })
                 && find_ci(p, "Installer.exe").is_some()
         })
         .collect();
@@ -127,13 +148,17 @@ fn offline_zips() -> Vec<PathBuf> {
         .map(|e| e.path())
         .filter(|p| {
             p.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip"))
-                && p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("OfflineSetup_Altium_Designer"))
+                && p.file_name().is_some_and(|n| {
+                    n.to_string_lossy()
+                        .starts_with("OfflineSetup_Altium_Designer")
+                })
         })
         .collect()
 }
 
 fn bottle_env_has(bottle_dir: &Path, key: &str) -> bool {
-    std::fs::read_to_string(bottle_dir.join("bottle.yml")).is_ok_and(|s| s.contains(&format!("  {key}: ")))
+    std::fs::read_to_string(bottle_dir.join("bottle.yml"))
+        .is_ok_and(|s| s.contains(&format!("  {key}: ")))
 }
 
 /// Steps for the configured host (see [`crate::ops::host_choice`]).
@@ -145,7 +170,8 @@ pub fn steps(cfg: &Config) -> Vec<Step> {
     }
 }
 
-const DOWNLOAD: &str = "https://www.altium.com/products/downloads (sign in; Altium Designer > Online Installer)";
+const DOWNLOAD: &str =
+    "https://www.altium.com/products/downloads (sign in; Altium Designer > Online Installer)";
 
 fn bridge_step(done: bool) -> Step {
     Step {
@@ -181,7 +207,9 @@ pub fn local_steps(cfg: &Config) -> Vec<Step> {
             who: "user",
             detail: match &x2 {
                 Some(p) => p.display().to_string(),
-                None => format!("download from {DOWNLOAD}; or point to an existing install: ace designer config --set altium_exe=<X2.EXE>"),
+                None => format!(
+                    "download from {DOWNLOAD}; or point to an existing install: ace designer config --set altium_exe=<X2.EXE>"
+                ),
             },
             commands: vec![],
         },
@@ -201,10 +229,14 @@ pub fn local_steps(cfg: &Config) -> Vec<Step> {
 /// Another Windows machine over SSH.
 pub fn ssh_steps(cfg: &Config) -> Vec<Step> {
     let sc = crate::ssh::SshConfig::from(cfg);
-    let host = sc.clone().and_then(|c| crate::ssh::SshHost::connect(c).ok());
+    let host = sc
+        .clone()
+        .and_then(|c| crate::ssh::SshHost::connect(c).ok());
     let runner = host.as_ref().is_some_and(|h| h.runner_installed());
     let has_altium = host.as_ref().is_some_and(|h| h.has_altium());
-    let bridge = host.as_ref().is_some_and(|h| crate::bridge::Bridge::new(h).installed());
+    let bridge = host
+        .as_ref()
+        .is_some_and(|h| crate::bridge::Bridge::new(h).installed());
     vec![
         Step {
             id: "ssh-config",
@@ -267,8 +299,22 @@ pub fn wine_steps(cfg: &Config) -> Vec<Step> {
         who: "auto",
         detail: BOTTLES_APP.into(),
         commands: vec![
-            run(&[&"flatpak", &"remote-add", &"--user", &"--if-not-exists", &"flathub", &"https://dl.flathub.org/repo/flathub.flatpakrepo"]),
-            run(&[&"flatpak", &"install", &"--user", &"-y", &"flathub", &BOTTLES_APP]),
+            run(&[
+                &"flatpak",
+                &"remote-add",
+                &"--user",
+                &"--if-not-exists",
+                &"flathub",
+                &"https://dl.flathub.org/repo/flathub.flatpakrepo",
+            ]),
+            run(&[
+                &"flatpak",
+                &"install",
+                &"--user",
+                &"-y",
+                &"flathub",
+                &BOTTLES_APP,
+            ]),
         ],
     });
     v.push(Step {
@@ -277,7 +323,15 @@ pub fn wine_steps(cfg: &Config) -> Vec<Step> {
         done: has("clang") && has("ld.lld") && has("llvm-dlltool"),
         who: "user",
         detail: "needs sudo once".into(),
-        commands: vec![run(&[&"sudo", &"pacman", &"-S", &"--needed", &"clang", &"lld", &"llvm"])],
+        commands: vec![run(&[
+            &"sudo",
+            &"pacman",
+            &"-S",
+            &"--needed",
+            &"clang",
+            &"lld",
+            &"llvm",
+        ])],
     });
     v.push(Step {
         id: "bottle",
@@ -290,11 +344,16 @@ pub fn wine_steps(cfg: &Config) -> Vec<Step> {
     v.push(Step {
         id: "bottle-env",
         title: "Set the bottle environment variables",
-        done: bottle_env_has(&bdir, "DOTNET_SYSTEM_GLOBALIZATION_USENLS") && bottle_env_has(&bdir, "SteamAppId"),
+        done: bottle_env_has(&bdir, "DOTNET_SYSTEM_GLOBALIZATION_USENLS")
+            && bottle_env_has(&bdir, "SteamAppId"),
         who: "auto",
         detail: "installer ICU fix + window class for Hyprland rules".into(),
         commands: vec![
-            bottles_cli("edit", &bottle, &[&"--env-var", &"DOTNET_SYSTEM_GLOBALIZATION_USENLS=1"]),
+            bottles_cli(
+                "edit",
+                &bottle,
+                &[&"--env-var", &"DOTNET_SYSTEM_GLOBALIZATION_USENLS=1"],
+            ),
             bottles_cli("edit", &bottle, &[&"--env-var", &"SteamAppId=altium"]),
         ],
     });
@@ -314,12 +373,27 @@ pub fn wine_steps(cfg: &Config) -> Vec<Step> {
     v.push(Step {
         id: "installer-access",
         title: "Let Bottles read the installer folder",
-        done: inst_dir.as_ref().is_some_and(|d| crate::wine::flatpak_filesystems().iter().any(|f| d.starts_with(f.trim_end_matches(":ro")))),
+        done: inst_dir.as_ref().is_some_and(|d| {
+            crate::wine::flatpak_filesystems()
+                .iter()
+                .any(|f| d.starts_with(f.trim_end_matches(":ro")))
+        }),
         who: "auto",
-        detail: inst_dir.as_ref().map(|d| d.display().to_string()).unwrap_or_else(|| "(installer not found yet)".into()),
+        detail: inst_dir
+            .as_ref()
+            .map(|d| d.display().to_string())
+            .unwrap_or_else(|| "(installer not found yet)".into()),
         commands: inst_dir
             .iter()
-            .map(|d| run(&[&"flatpak", &"override", &"--user", &concat("--filesystem=", d), &BOTTLES_APP]))
+            .map(|d| {
+                run(&[
+                    &"flatpak",
+                    &"override",
+                    &"--user",
+                    &concat("--filesystem=", d),
+                    &BOTTLES_APP,
+                ])
+            })
             .collect(),
     });
     v.push(Step {
@@ -340,7 +414,9 @@ pub fn wine_steps(cfg: &Config) -> Vec<Step> {
             std::fs::read_to_string(i.prefix.join("user.reg")).is_ok_and(|r| r.contains("Altium"))
         }),
         who: "user",
-        detail: "creates the registry keys the fixes write into; misbehaviour on this run is expected".into(),
+        detail:
+            "creates the registry keys the fixes write into; misbehaviour on this run is expected"
+                .into(),
         commands: vec![say("ace designer start")],
     });
     let fixes = fixes_dir();
@@ -349,7 +425,10 @@ pub fn wine_steps(cfg: &Config) -> Vec<Step> {
         title: "Apply the altium-on-linux fixes (Altium closed)",
         done: inst.is_some_and(|i| find_ci(&i.altium_dir, "SHFolder.dll").is_some()),
         who: "auto",
-        detail: format!("clones {FIXES_REPO} into {} and runs scripts/install.sh", fixes.display()),
+        detail: format!(
+            "clones {FIXES_REPO} into {} and runs scripts/install.sh",
+            fixes.display()
+        ),
         commands: vec![
             if fixes.is_dir() {
                 run(&[&"git", &"-C", &fixes, &"pull", &"--ff-only"])
@@ -379,7 +458,9 @@ pub fn wine_steps(cfg: &Config) -> Vec<Step> {
     v.push(Step {
         id: "bridge",
         title: "Install the altium-cli-extended bridge script",
-        done: inst.is_some_and(|i| crate::bridge::Bridge::new(&crate::wine::WineHost::new(i.clone())).installed()),
+        done: inst.is_some_and(|i| {
+            crate::bridge::Bridge::new(&crate::wine::WineHost::new(i.clone())).installed()
+        }),
         who: "auto",
         detail: "C:\\altium-cli-extended\\bridge".into(),
         commands: vec![say("ace designer install-bridge")],
@@ -388,35 +469,59 @@ pub fn wine_steps(cfg: &Config) -> Vec<Step> {
 }
 
 fn joined(cmds: &[Cmd]) -> String {
-    cmds.iter().map(Cmd::display).collect::<Vec<_>>().join(" && ")
+    cmds.iter()
+        .map(Cmd::display)
+        .collect::<Vec<_>>()
+        .join(" && ")
 }
 
 /// Run an `auto` step's commands. Returns each command with its exit status.
 pub fn apply(cfg: &Config, id: &str) -> Result<Vec<(String, i32)>> {
     if id == "runner" && crate::ops::host_choice(cfg) == "local" {
         crate::local::LocalHost::new(cfg)?.install_runner()?;
-        return Ok(vec![("register scheduled task altium-cli-extended-run locally".into(), 0)]);
+        return Ok(vec![(
+            "register scheduled task altium-cli-extended-run locally".into(),
+            0,
+        )]);
     }
     if id == "runner" && crate::ops::host_choice(cfg) == "ssh" {
-        let sc = crate::ssh::SshConfig::from(cfg).ok_or_else(|| Error::usage("no ssh_host configured"))?;
+        let sc = crate::ssh::SshConfig::from(cfg)
+            .ok_or_else(|| Error::usage("no ssh_host configured"))?;
         crate::ssh::SshHost::connect(sc)?.install_runner()?;
-        return Ok(vec![("register scheduled task altium-cli-extended-run over SSH".into(), 0)]);
+        return Ok(vec![(
+            "register scheduled task altium-cli-extended-run over SSH".into(),
+            0,
+        )]);
     }
     let all = steps(cfg);
     let Some(step) = all.iter().find(|s| s.id == id) else {
-        return Err(Error::not_found(format!("no setup step {id:?}"))
-            .hint(format!("steps: {}", all.iter().map(|s| s.id).collect::<Vec<_>>().join(", "))));
+        return Err(
+            Error::not_found(format!("no setup step {id:?}")).hint(format!(
+                "steps: {}",
+                all.iter().map(|s| s.id).collect::<Vec<_>>().join(", ")
+            )),
+        );
     };
     if step.who != "auto" && (step.id != "installer" || step.commands.is_empty()) {
-        return Err(Error::new(ErrorCode::Unsafe, format!("step {id} needs you: {}", step.detail))
-            .hint(if step.commands.is_empty() { "follow the detail text".to_owned() } else { format!("run: {}", joined(&step.commands)) }));
+        return Err(Error::new(
+            ErrorCode::Unsafe,
+            format!("step {id} needs you: {}", step.detail),
+        )
+        .hint(if step.commands.is_empty() {
+            "follow the detail text".to_owned()
+        } else {
+            format!("run: {}", joined(&step.commands))
+        }));
     }
     let mut argvs = vec![];
     for c in &step.commands {
         match c {
             Cmd::Run(argv) => argvs.push((c.display(), argv)),
             Cmd::Say(_) => {
-                return Err(Error::usage(format!("`designer setup --apply` does not run step {id}")).hint(format!("run: {}", joined(&step.commands))));
+                return Err(Error::usage(format!(
+                    "`designer setup --apply` does not run step {id}"
+                ))
+                .hint(format!("run: {}", joined(&step.commands))));
             }
         }
     }
@@ -426,8 +531,10 @@ pub fn apply(cfg: &Config, id: &str) -> Result<Vec<(String, i32)>> {
         let code = st.code().unwrap_or(-1);
         out.push((c.clone(), code));
         if code != 0 {
-            return Err(Error::new(ErrorCode::Io, format!("`{c}` failed with exit code {code}"))
-                .details(serde_json::json!({"ran": out})));
+            return Err(
+                Error::new(ErrorCode::Io, format!("`{c}` failed with exit code {code}"))
+                    .details(serde_json::json!({"ran": out})),
+            );
         }
     }
     Ok(out)
@@ -439,34 +546,80 @@ mod tests {
 
     #[test]
     fn unzip_gets_the_zip_name_as_one_argument() {
-        let zip = Path::new("/home/u/Downloads/OfflineSetup_Altium_Designer_Public_25';touch ${HOME}PWNED;'.zip");
-        let Cmd::Run(argv) = unzip_cmd(zip) else { panic!("unzip must be runnable") };
+        let zip = Path::new(
+            "/home/u/Downloads/OfflineSetup_Altium_Designer_Public_25';touch ${HOME}PWNED;'.zip",
+        );
+        let Cmd::Run(argv) = unzip_cmd(zip) else {
+            panic!("unzip must be runnable")
+        };
         let dir = "/home/u/Downloads/OfflineSetup_Altium_Designer_Public_25';touch ${HOME}PWNED;'";
-        assert_eq!(argv, ["unzip", "-q", "-o", zip.to_str().unwrap(), "-d", dir].map(OsString::from));
+        assert_eq!(
+            argv,
+            ["unzip", "-q", "-o", zip.to_str().unwrap(), "-d", dir].map(OsString::from)
+        );
     }
 
     #[test]
     fn bottle_names_stay_one_argument() {
-        let Cmd::Run(argv) = bottles_cli("edit", "My Bottle;id", &[&"--env-var", &"SteamAppId=altium"]) else { panic!() };
-        assert_eq!(argv, ["flatpak", "run", "--command=bottles-cli", BOTTLES_APP, "edit", "-b", "My Bottle;id", "--env-var", "SteamAppId=altium"].map(OsString::from));
+        let Cmd::Run(argv) = bottles_cli(
+            "edit",
+            "My Bottle;id",
+            &[&"--env-var", &"SteamAppId=altium"],
+        ) else {
+            panic!()
+        };
+        assert_eq!(
+            argv,
+            [
+                "flatpak",
+                "run",
+                "--command=bottles-cli",
+                BOTTLES_APP,
+                "edit",
+                "-b",
+                "My Bottle;id",
+                "--env-var",
+                "SteamAppId=altium"
+            ]
+            .map(OsString::from)
+        );
     }
 
     #[cfg(unix)]
     #[test]
     fn shown_commands_paste_into_a_shell_unchanged() {
-        let hostile = ["25';echo INJECTED;'", "a b", "$(echo INJECTED)", "`echo INJECTED`", "line\nbreak", "-rf", "100%", "it's", "", "${HOME}", "back\\slash", "plain-arg_1.zip"];
+        let hostile = [
+            "25';echo INJECTED;'",
+            "a b",
+            "$(echo INJECTED)",
+            "`echo INJECTED`",
+            "line\nbreak",
+            "-rf",
+            "100%",
+            "it's",
+            "",
+            "${HOME}",
+            "back\\slash",
+            "plain-arg_1.zip",
+        ];
         let mut argv: Vec<OsString> = vec!["printf".into(), "%s\\0".into()];
         argv.extend(hostile.iter().map(OsString::from));
         let shown = Cmd::Run(argv).display();
         let out = Command::new("sh").arg("-c").arg(&shown).output().unwrap();
-        let expected: Vec<u8> = hostile.iter().flat_map(|a| [a.as_bytes(), b"\0"].concat()).collect();
+        let expected: Vec<u8> = hostile
+            .iter()
+            .flat_map(|a| [a.as_bytes(), b"\0"].concat())
+            .collect();
         assert_eq!(out.stdout, expected, "{shown}");
         assert!(shown.ends_with(" plain-arg_1.zip"));
     }
 
     #[test]
     fn apply_refuses_a_step_it_cannot_run() {
-        let cfg = Config { host: Some("ssh".into()), ..Config::default() };
+        let cfg = Config {
+            host: Some("ssh".into()),
+            ..Config::default()
+        };
         let e = apply(&cfg, "bridge").unwrap_err();
         assert_eq!(e.code, ErrorCode::Usage);
         assert_eq!(e.hint.as_deref(), Some("run: ace designer install-bridge"));

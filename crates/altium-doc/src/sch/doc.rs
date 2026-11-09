@@ -168,7 +168,9 @@ pub struct Component {
 
 impl Component {
     pub fn param(&self, name: &str) -> Option<&Parameter> {
-        self.parameters.iter().find(|p| p.name.eq_ignore_ascii_case(name))
+        self.parameters
+            .iter()
+            .find(|p| p.name.eq_ignore_ascii_case(name))
     }
     /// Graphical components carry no electrical meaning (no pins in the netlist).
     pub fn is_graphical(&self) -> bool {
@@ -176,7 +178,10 @@ impl Component {
     }
     pub fn exclude_from_bom(&self) -> bool {
         // Mechanical parts (heatsinks, screws) are in Altium's BOM; they only skip the netlist.
-        matches!(self.kind.as_str(), "Graphical" | "Net Tie" | "Standard (No BOM)" | "Jumper")
+        matches!(
+            self.kind.as_str(),
+            "Graphical" | "Net Tie" | "Standard (No BOM)" | "Jumper"
+        )
     }
     /// Footprint pads a schematic pin maps to: the current footprint model's map definer
     /// (record 47) when it lists the pin, else the pin designator itself. Verified on the
@@ -495,8 +500,11 @@ pub fn load(path: &Path) -> Result<SchDoc> {
 
 pub fn load_with(path: &Path, opts: &LoadOptions) -> Result<SchDoc> {
     if DocKind::of(path) != DocKind::Schematic {
-        return Err(Error::new(ErrorCode::WrongFileType, format!("{} is not a .SchDoc", path.display()))
-            .hint("schematic libraries use `ace schlib ...`; projects use `ace project ...`"));
+        return Err(Error::new(
+            ErrorCode::WrongFileType,
+            format!("{} is not a .SchDoc", path.display()),
+        )
+        .hint("schematic libraries use `ace schlib ...`; projects use `ace project ...`"));
     }
     let bytes = std::fs::read(path)
         .map_err(|e| Error::from(e).hint(format!("check the path: {}", path.display())))?;
@@ -507,25 +515,39 @@ pub fn load_with(path: &Path, opts: &LoadOptions) -> Result<SchDoc> {
 pub fn load_bytes(path: &Path, bytes: Vec<u8>, opts: &LoadOptions) -> Result<SchDoc> {
     let mut cf = Compound::from_bytes(path, bytes.clone())?;
     let fh = cf.read("FileHeader").map_err(|e| {
-        Error::parse(format!("{}: no FileHeader stream ({})", path.display(), e.message))
-            .hint("is this a schematic saved by Altium Designer (binary format)?")
+        Error::parse(format!(
+            "{}: no FileHeader stream ({})",
+            path.display(),
+            e.message
+        ))
+        .hint("is this a schematic saved by Altium Designer (binary format)?")
     })?;
     let mut warnings = Vec::new();
     let (fh_records, left) = split_records(&fh);
     if left > 0 {
-        warnings.push(format!("FileHeader: {left} trailing bytes do not form a complete record"));
+        warnings.push(format!(
+            "FileHeader: {left} trailing bytes do not form a complete record"
+        ));
     }
     let Some(first) = fh_records.first() else {
-        return Err(Error::parse(format!("{}: FileHeader is empty", path.display())));
+        return Err(Error::parse(format!(
+            "{}: FileHeader is empty",
+            path.display()
+        )));
     };
     let header = first.props();
     let htext = header.str("HEADER");
     if !htext.eq_ignore_ascii_case(SCHDOC_HEADER) {
         if htext.to_ascii_lowercase().contains("library") {
-            return Err(Error::new(ErrorCode::WrongFileType, format!("{} is a schematic library ({htext})", path.display()))
-                .hint("use `ace schlib ...`"));
+            return Err(Error::new(
+                ErrorCode::WrongFileType,
+                format!("{} is a schematic library ({htext})", path.display()),
+            )
+            .hint("use `ace schlib ...`"));
         }
-        warnings.push(format!("unexpected FileHeader header {htext:?}; parsing anyway"));
+        warnings.push(format!(
+            "unexpected FileHeader header {htext:?}; parsing anyway"
+        ));
     }
     let mut records: Vec<SchRecord> = Vec::new();
     for r in &fh_records[1..] {
@@ -541,12 +563,17 @@ pub fn load_bytes(path: &Path, bytes: Vec<u8>, opts: &LoadOptions) -> Result<Sch
     if let Some(w) = header.int("WEIGHT")
         && w as usize != records.len()
     {
-        warnings.push(format!("header WEIGHT={w} but FileHeader holds {} records", records.len()));
+        warnings.push(format!(
+            "header WEIGHT={w} but FileHeader holds {} records",
+            records.len()
+        ));
     }
     if let Some(add) = cf.read_opt("Additional") {
         let (recs, left) = split_records(&add);
         if left > 0 {
-            warnings.push(format!("Additional: {left} trailing bytes do not form a complete record"));
+            warnings.push(format!(
+                "Additional: {left} trailing bytes do not form a complete record"
+            ));
         }
         for r in recs.iter().skip(1) {
             let props = if r.is_text() { r.props() } else { Props::new() };
@@ -624,7 +651,11 @@ fn parse_repeat(name: &str) -> Option<Repeat> {
     if parts.len() != 3 {
         return None;
     }
-    Some(Repeat { name: parts[0].to_owned(), first: parts[1].parse().ok()?, last: parts[2].parse().ok()? })
+    Some(Repeat {
+        name: parts[0].to_owned(),
+        first: parts[1].parse().ok()?,
+        last: parts[2].parse().ok()?,
+    })
 }
 
 fn build(doc: &mut SchDoc) {
@@ -649,7 +680,11 @@ fn build(doc: &mut SchDoc) {
                 let (size, width, height) = if custom {
                     ("Custom".to_owned(), p.sch("CUSTOMX"), p.sch("CUSTOMY"))
                 } else {
-                    (name.to_owned(), Coord::from_sch(w, 0), Coord::from_sch(h, 0))
+                    (
+                        name.to_owned(),
+                        Coord::from_sch(w, 0),
+                        Coord::from_sch(h, 0),
+                    )
                 };
                 let n = p.int_or("FONTIDCOUNT", 0);
                 let fonts = (1..=n)
@@ -748,7 +783,9 @@ fn build(doc: &mut SchDoc) {
                     }
                     for pk in kids(k) {
                         let pp = &recs[pk].props;
-                        if recs[pk].record == 41 && pp.str("NAME").eq_ignore_ascii_case("PinUniqueId") {
+                        if recs[pk].record == 41
+                            && pp.str("NAME").eq_ignore_ascii_case("PinUniqueId")
+                        {
                             pin.unique_id = opt_str(pp, "TEXT");
                         }
                     }
@@ -765,7 +802,9 @@ fn build(doc: &mut SchDoc) {
                                         let n = dp.int_or("DESIMPCOUNT", 0).max(0);
                                         model.pin_map.push(PinMap {
                                             pin: dp.str("DESINTF"),
-                                            pads: (0..n).map(|i| dp.str(&format!("DESIMP{i}"))).collect(),
+                                            pads: (0..n)
+                                                .map(|i| dp.str(&format!("DESIMP{i}")))
+                                                .collect(),
                                         });
                                     }
                                 }
@@ -785,14 +824,20 @@ fn build(doc: &mut SchDoc) {
             }
         }
         prim::resolve_params(&mut c.parameters, &doc_params_snapshot);
-        c.comment = c.param("Comment").map(|p| p.effective().to_owned()).unwrap_or_default();
+        c.comment = c
+            .param("Comment")
+            .map(|p| p.effective().to_owned())
+            .unwrap_or_default();
         c.footprint = prim::current_footprint(&c.models).map(|m| m.name.clone());
         if c.part_count > 1 {
             c.part = Some(rt::part_letter(c.part_id));
         }
         c.display_designator = format!("{}{}", c.designator, c.part.as_deref().unwrap_or(""));
         if c.designator.is_empty() {
-            doc.warnings.push(format!("component at record {} ({}) has no designator", c.index, c.lib_ref));
+            doc.warnings.push(format!(
+                "component at record {} ({}) has no designator",
+                c.index, c.lib_ref
+            ));
         }
         comp_designator.insert(r.index, c.display_designator.clone());
         comp_part.insert(r.index, (c.part_id, c.display_mode));
@@ -817,7 +862,12 @@ fn build(doc: &mut SchDoc) {
         let p = &r.props;
         let i = r.index;
         match r.record {
-            27 => doc.wires.push(Wire { index: i, points: rt::points(p), unique_id: opt_str(p, "UNIQUEID"), net: None }),
+            27 => doc.wires.push(Wire {
+                index: i,
+                points: rt::points(p),
+                unique_id: opt_str(p, "UNIQUEID"),
+                net: None,
+            }),
             26 => doc.buses.push(Bus {
                 index: i,
                 points: rt::points(p),
@@ -825,8 +875,19 @@ fn build(doc: &mut SchDoc) {
                 entries: vec![],
                 unique_id: opt_str(p, "UNIQUEID"),
             }),
-            37 => doc.bus_entries.push(BusEntry { index: i, location: rt::location(p), corner: rt::corner(p), bus: None, net: None }),
-            29 => doc.junctions.push(Junction { index: i, location: rt::location(p), locked: p.bool("LOCKED"), net: None }),
+            37 => doc.bus_entries.push(BusEntry {
+                index: i,
+                location: rt::location(p),
+                corner: rt::corner(p),
+                bus: None,
+                net: None,
+            }),
+            29 => doc.junctions.push(Junction {
+                index: i,
+                location: rt::location(p),
+                locked: p.bool("LOCKED"),
+                net: None,
+            }),
             25 => doc.net_labels.push(NetLabel {
                 index: i,
                 name: p.str("TEXT"),
@@ -841,7 +902,9 @@ fn build(doc: &mut SchDoc) {
                 doc.power_ports.push(PowerPort {
                     index: i,
                     name: p.str("TEXT"),
-                    style: rt::power_style(style).map(str::to_owned).unwrap_or_else(|| format!("unknown_{style}")),
+                    style: rt::power_style(style)
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| format!("unknown_{style}")),
                     show_net_name: p.bool("SHOWNETNAME"),
                     cross_sheet_connector: p.bool("ISCROSSSHEETCONNECTOR"),
                     location: rt::location(p),
@@ -931,7 +994,8 @@ fn build(doc: &mut SchDoc) {
                 s.repeat = parse_repeat(&s.sheet_name);
                 prim::resolve_params(&mut s.parameters, &doc_params_snapshot);
                 if s.file_name.is_empty() {
-                    doc.warnings.push(format!("sheet symbol at record {i} has no file name"));
+                    doc.warnings
+                        .push(format!("sheet symbol at record {i} has no file name"));
                 }
                 doc.sheet_symbols.push(s);
             }
@@ -947,14 +1011,20 @@ fn build(doc: &mut SchDoc) {
             // Symbol text / images of a sub-part or display mode that is not the placed one
             // are not shown.
             4 | 28 | 209 | 226 | 30
-                if r.owner().and_then(|o| comp_part.get(&o)).is_some_and(|&(part, mode)| {
-                    let pp = p.int_or("OWNERPARTID", -1);
-                    (pp > 0 && pp != part) || p.int_or("OWNERPARTDISPLAYMODE", 0) != mode
-                }) => {}
+                if r.owner()
+                    .and_then(|o| comp_part.get(&o))
+                    .is_some_and(|&(part, mode)| {
+                        let pp = p.int_or("OWNERPARTID", -1);
+                        (pp > 0 && pp != part) || p.int_or("OWNERPARTDISPLAYMODE", 0) != mode
+                    }) => {}
             4 | 28 | 209 | 226 => doc.texts.push(Text {
                 index: i,
                 kind: rt::type_name(r.record).into(),
-                text: if matches!(r.record, 28 | 209) { rt::frame_text(&p.str("TEXT")) } else { p.str("TEXT") },
+                text: if matches!(r.record, 28 | 209) {
+                    rt::frame_text(&p.str("TEXT"))
+                } else {
+                    p.str("TEXT")
+                },
                 location: rt::location(p),
                 corner: matches!(r.record, 28 | 209).then(|| rt::corner(p)),
                 orientation: p.int("ORIENTATION").map(rt::orientation_deg),
@@ -965,9 +1035,13 @@ fn build(doc: &mut SchDoc) {
             30 => {
                 let file_name = p.str("FILENAME");
                 let embedded = p.bool("EMBEDIMAGE");
-                let storage_name = embedded.then(|| storage::find(&doc.storage, &file_name).map(|s| s.name.clone())).flatten();
+                let storage_name = embedded
+                    .then(|| storage::find(&doc.storage, &file_name).map(|s| s.name.clone()))
+                    .flatten();
                 if embedded && storage_name.is_none() {
-                    doc.warnings.push(format!("image {i}: embedded file {file_name:?} not found in Storage"));
+                    doc.warnings.push(format!(
+                        "image {i}: embedded file {file_name:?} not found in Storage"
+                    ));
                 }
                 doc.images.push(Image {
                     index: i,
@@ -1017,7 +1091,10 @@ fn build(doc: &mut SchDoc) {
                 // OWNERINDEX of harness entries/types is unreliable; they belong to the
                 // most recent harness connector.
                 let Some(h) = harness_current else {
-                    doc.warnings.push(format!("record {i} ({}) has no harness connector before it", rt::type_name(r.record)));
+                    doc.warnings.push(format!(
+                        "record {i} ({}) has no harness connector before it",
+                        rt::type_name(r.record)
+                    ));
                     continue;
                 };
                 let hc = &mut doc.harness_connectors[h];
@@ -1032,10 +1109,18 @@ fn build(doc: &mut SchDoc) {
                     hc.harness_type = opt_str(p, "TEXT");
                 }
             }
-            218 => doc.signal_harnesses.push(SignalHarness { index: i, points: rt::points(p) }),
-            -1 if !r.binary => doc.warnings.push(format!("record {i} in {} has no RECORD property", r.stream)),
+            218 => doc.signal_harnesses.push(SignalHarness {
+                index: i,
+                points: rt::points(p),
+            }),
+            -1 if !r.binary => doc
+                .warnings
+                .push(format!("record {i} in {} has no RECORD property", r.stream)),
             n if rt::type_name(n) == "unknown" => {
-                doc.warnings.push(format!("record {i}: unknown record type {n} in {} (see `sch records --type {n}`)", r.stream));
+                doc.warnings.push(format!(
+                    "record {i}: unknown record type {n} in {} (see `sch records --type {n}`)",
+                    r.stream
+                ));
             }
             _ => {}
         }
@@ -1043,17 +1128,27 @@ fn build(doc: &mut SchDoc) {
     // Bus entries ↔ buses.
     for be in &mut doc.bus_entries {
         for b in &mut doc.buses {
-            if super::connect::on_polyline(be.location, &b.points) || super::connect::on_polyline(be.corner, &b.points) {
+            if super::connect::on_polyline(be.location, &b.points)
+                || super::connect::on_polyline(be.corner, &b.points)
+            {
                 be.bus = Some(b.index);
                 b.entries.push(be.index);
                 break;
             }
         }
     }
-    let unannotated: Vec<String> =
-        doc.components.iter().filter(|c| c.designator.contains('?')).map(|c| c.designator.clone()).collect();
+    let unannotated: Vec<String> = doc
+        .components
+        .iter()
+        .filter(|c| c.designator.contains('?'))
+        .map(|c| c.designator.clone())
+        .collect();
     if !unannotated.is_empty() {
-        doc.warnings.push(format!("{} unannotated component(s): {}", unannotated.len(), unannotated.join(", ")));
+        doc.warnings.push(format!(
+            "{} unannotated component(s): {}",
+            unannotated.len(),
+            unannotated.join(", ")
+        ));
     }
     if !doc.harness_connectors.is_empty() || !doc.signal_harnesses.is_empty() {
         doc.warnings.push("signal harnesses are listed but their member nets are not resolved (use `ace designer` for a compiled netlist)".into());
@@ -1062,7 +1157,10 @@ fn build(doc: &mut SchDoc) {
 
 impl SchDoc {
     pub fn file_name(&self) -> String {
-        self.path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default()
+        self.path
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_default()
     }
 
     /// Count of records per type name.
@@ -1076,24 +1174,44 @@ impl SchDoc {
     }
 
     pub fn doc_param(&self, name: &str) -> Option<&Parameter> {
-        self.parameters.iter().find(|p| p.name.eq_ignore_ascii_case(name))
+        self.parameters
+            .iter()
+            .find(|p| p.name.eq_ignore_ascii_case(name))
     }
 
     /// Component instances matching a designator: `U1` (every sub-part) or `U1A` (one).
     /// Case-insensitive.
     pub fn find_components(&self, designator: &str) -> Result<Vec<&Component>> {
         let d = designator.trim();
-        let exact: Vec<&Component> =
-            self.components.iter().filter(|c| c.display_designator.eq_ignore_ascii_case(d)).collect();
-        let base: Vec<&Component> = self.components.iter().filter(|c| c.designator.eq_ignore_ascii_case(d)).collect();
+        let exact: Vec<&Component> = self
+            .components
+            .iter()
+            .filter(|c| c.display_designator.eq_ignore_ascii_case(d))
+            .collect();
+        let base: Vec<&Component> = self
+            .components
+            .iter()
+            .filter(|c| c.designator.eq_ignore_ascii_case(d))
+            .collect();
         let hits = if !base.is_empty() { base } else { exact };
         if hits.is_empty() {
-            let mut names: Vec<&str> = self.components.iter().map(|c| c.designator.as_str()).collect();
+            let mut names: Vec<&str> = self
+                .components
+                .iter()
+                .map(|c| c.designator.as_str())
+                .collect();
             names.sort();
             names.dedup();
             let shown: Vec<&str> = names.iter().take(40).copied().collect();
-            return Err(Error::not_found(format!("no component {d:?} in {}", self.file_name()))
-                .hint(format!("designators: {}{}", shown.join(", "), if names.len() > 40 { ", ..." } else { "" })));
+            return Err(
+                Error::not_found(format!("no component {d:?} in {}", self.file_name())).hint(
+                    format!(
+                        "designators: {}{}",
+                        shown.join(", "),
+                        if names.len() > 40 { ", ..." } else { "" }
+                    ),
+                ),
+            );
         }
         Ok(hits)
     }

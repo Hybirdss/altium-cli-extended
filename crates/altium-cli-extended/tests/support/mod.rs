@@ -30,21 +30,36 @@ pub fn pcblib(path: &Path) {
     let mut list = record(b"|HEADER=PCB Library\0");
     list.extend(1u32.to_le_bytes());
     list.extend(record(b"\x01A"));
-    compound(path, &[
-        ("Library/Data", list),
-        ("A/Data", record(b"\x01A")),
-        ("A/Parameters", record(b"|PATTERN=A|DESCRIPTION=Original|HEIGHT=1mil\0")),
-        ("Library/Models/Data", record(b"|ID=one|NAME=victim.PcbDoc|EMBED=TRUE\0")),
-        ("Library/Models/0", compressed(b"model")),
-    ]);
+    compound(
+        path,
+        &[
+            ("Library/Data", list),
+            ("A/Data", record(b"\x01A")),
+            (
+                "A/Parameters",
+                record(b"|PATTERN=A|DESCRIPTION=Original|HEIGHT=1mil\0"),
+            ),
+            (
+                "Library/Models/Data",
+                record(b"|ID=one|NAME=victim.PcbDoc|EMBED=TRUE\0"),
+            ),
+            ("Library/Models/0", compressed(b"model")),
+        ],
+    );
 }
 
 pub fn pcb(path: &Path) {
-    compound(path, &[
-        ("Board6/Data", record(b"|KIND=Protel_Advanced_PCB\0")),
-        ("Models/Data", record(b"|ID=one|NAME=victim.PcbDoc|EMBED=TRUE\0")),
-        ("Models/0", compressed(b"model")),
-    ]);
+    compound(
+        path,
+        &[
+            ("Board6/Data", record(b"|KIND=Protel_Advanced_PCB\0")),
+            (
+                "Models/Data",
+                record(b"|ID=one|NAME=victim.PcbDoc|EMBED=TRUE\0"),
+            ),
+            ("Models/0", compressed(b"model")),
+        ],
+    );
 }
 
 pub fn sch(path: &Path, names: &[&str]) {

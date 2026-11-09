@@ -28,17 +28,30 @@ impl Ctx {
             .hint("paths are relative to the current directory; quote names with spaces"));
         }
         if p.is_dir() {
-            let mut candidates: Vec<PathBuf> = std::fs::read_dir(p)?.filter_map(|e| e.ok()).map(|e| e.path())
-                .filter(|f| f.is_file() && altium_format::DocKind::of(f) == altium_format::DocKind::Project
-                    && !f.file_name().is_some_and(|n| n.to_string_lossy().starts_with("._"))).collect();
+            let mut candidates: Vec<PathBuf> = std::fs::read_dir(p)?
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|f| {
+                    f.is_file()
+                        && altium_format::DocKind::of(f) == altium_format::DocKind::Project
+                        && !f
+                            .file_name()
+                            .is_some_and(|n| n.to_string_lossy().starts_with("._"))
+                })
+                .collect();
             candidates.sort();
             return match candidates.as_slice() {
                 [one] => Ok(one.clone()),
-                [] => Err(Error::not_found(format!("no .PrjPcb project in {}", p.display()))
-                    .hint("run `ace project find <directory>` and pass an explicit project")),
-                _ => Err(Error::new(ErrorCode::Ambiguous, format!("several projects in {}", p.display()))
-                    .details(serde_json::json!({"candidates": candidates}))
-                    .hint("choose an explicit .PrjPcb from error.details.candidates")),
+                [] => Err(
+                    Error::not_found(format!("no .PrjPcb project in {}", p.display()))
+                        .hint("run `ace project find <directory>` and pass an explicit project"),
+                ),
+                _ => Err(Error::new(
+                    ErrorCode::Ambiguous,
+                    format!("several projects in {}", p.display()),
+                )
+                .details(serde_json::json!({"candidates": candidates}))
+                .hint("choose an explicit .PrjPcb from error.details.candidates")),
             };
         }
         Ok(p.to_path_buf())
@@ -46,8 +59,11 @@ impl Ctx {
 
     fn check_write(&self) -> Result<()> {
         if self.read_only && !self.dry_run {
-            return Err(Error::new(ErrorCode::Unsafe, "read-only session refuses a design write")
-                .hint("copy the project and unset ACE_READONLY / --read-only to edit"));
+            return Err(Error::new(
+                ErrorCode::Unsafe,
+                "read-only session refuses a design write",
+            )
+            .hint("copy the project and unset ACE_READONLY / --read-only to edit"));
         }
         Ok(())
     }
@@ -55,22 +71,37 @@ impl Ctx {
     /// Save recovery bytes without overwriting an existing copy, even with `--no-backup`.
     pub fn preserve_file(&self, path: &Path, bytes: &[u8]) -> Result<()> {
         self.check_write()?;
-        if !self.dry_run { altium_format::fsx::preserve(path, bytes)?; }
+        if !self.dry_run {
+            altium_format::fsx::preserve(path, bytes)?;
+        }
         Ok(())
     }
 
     /// Replace a design file honouring `--dry-run` / `--no-backup`. Returns the backup path.
     pub fn write_file(&self, path: &Path, bytes: &[u8]) -> Result<Option<PathBuf>> {
         self.check_write()?;
-        altium_format::fsx::replace(path, bytes, WriteOpts { dry_run: self.dry_run, no_backup: self.no_backup })
+        altium_format::fsx::replace(
+            path,
+            bytes,
+            WriteOpts {
+                dry_run: self.dry_run,
+                no_backup: self.no_backup,
+            },
+        )
     }
 
     /// Write a generated output file (BOM, netlist, SVG...): creates the parent directory,
     /// never keeps a backup, does nothing under `--dry-run`. Refuses to overwrite a design file.
     pub fn export_file(&self, path: &Path, bytes: &[u8]) -> Result<()> {
-        if !matches!(altium_format::DocKind::of(path), altium_format::DocKind::Other) {
-            return Err(Error::new(ErrorCode::Unsafe, format!("refusing to overwrite design file {}", path.display()))
-                .hint("choose an output name such as bom.csv or netlist.net"));
+        if !matches!(
+            altium_format::DocKind::of(path),
+            altium_format::DocKind::Other
+        ) {
+            return Err(Error::new(
+                ErrorCode::Unsafe,
+                format!("refusing to overwrite design file {}", path.display()),
+            )
+            .hint("choose an output name such as bom.csv or netlist.net"));
         }
         if self.dry_run {
             return Ok(());

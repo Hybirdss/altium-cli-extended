@@ -39,7 +39,12 @@ pub struct NetRename {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum MatchBy { #[default] Auto, Designator, UniqueId }
+pub enum MatchBy {
+    #[default]
+    Auto,
+    Designator,
+    UniqueId,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PartRename {
@@ -71,7 +76,10 @@ fn part_fields(p: &Part) -> BTreeMap<String, String> {
     m.insert("lib_ref".to_owned(), p.lib_ref.clone());
     m.insert("description".to_owned(), p.description.clone());
     m.insert("kind".to_owned(), p.kind.clone());
-    m.insert("exclude_from_bom".to_owned(), p.exclude_from_bom.to_string());
+    m.insert(
+        "exclude_from_bom".to_owned(),
+        p.exclude_from_bom.to_string(),
+    );
     for (k, v) in &p.pcb_fields {
         m.insert(k.to_string(), v.clone());
     }
@@ -109,30 +117,51 @@ pub fn diff_with(a: &Design, b: &Design, geometry: bool, matching: MatchBy) -> D
     let unique_ids = |parts: &BTreeMap<String, &Part>| {
         let mut ids: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for (name, part) in parts {
-            if !part.unique_id.is_empty() { ids.entry(part.unique_id.clone()).or_default().push(name.clone()); }
+            if !part.unique_id.is_empty() {
+                ids.entry(part.unique_id.clone())
+                    .or_default()
+                    .push(name.clone());
+            }
         }
-        ids.into_iter().filter_map(|(id, names)| (names.len() == 1).then(|| (id, names[0].clone()))).collect::<BTreeMap<_, _>>()
+        ids.into_iter()
+            .filter_map(|(id, names)| (names.len() == 1).then(|| (id, names[0].clone())))
+            .collect::<BTreeMap<_, _>>()
     };
     let mut pairs: BTreeMap<String, String> = BTreeMap::new();
     let mut used = BTreeSet::new();
     if matching != MatchBy::Designator {
         let (ia, ib) = (unique_ids(&pa), unique_ids(&pb));
         for (id, name) in ia {
-            if let Some(other) = ib.get(&id) { pairs.insert(name, other.clone()); used.insert(other.clone()); }
+            if let Some(other) = ib.get(&id) {
+                pairs.insert(name, other.clone());
+                used.insert(other.clone());
+            }
         }
     }
     if matching != MatchBy::UniqueId {
         for name in pa.keys() {
             if !pairs.contains_key(name) && pb.contains_key(name) && !used.contains(name) {
-                pairs.insert(name.clone(), name.clone()); used.insert(name.clone());
+                pairs.insert(name.clone(), name.clone());
+                used.insert(name.clone());
             }
         }
     }
     let parts_added = sorted(pb.keys().filter(|k| !used.contains(*k)).cloned().collect());
-    let parts_removed = sorted(pa.keys().filter(|k| !pairs.contains_key(*k)).cloned().collect());
-    let parts_renamed: Vec<_> = pairs.iter().filter(|(old, new)| old != new).map(|(old, new)| PartRename {
-        before_ref: old.clone(), designator: new.clone(), unique_id: pb[new].unique_id.clone(),
-    }).collect();
+    let parts_removed = sorted(
+        pa.keys()
+            .filter(|k| !pairs.contains_key(*k))
+            .cloned()
+            .collect(),
+    );
+    let parts_renamed: Vec<_> = pairs
+        .iter()
+        .filter(|(old, new)| old != new)
+        .map(|(old, new)| PartRename {
+            before_ref: old.clone(),
+            designator: new.clone(),
+            unique_id: pb[new].unique_id.clone(),
+        })
+        .collect();
     // Kind names and PCB-only settings are comparable only between two designs of one source.
     let same_source = a.source == b.source;
     let mut parts_changed = vec![];
@@ -144,21 +173,40 @@ pub fn diff_with(a: &Design, b: &Design, geometry: bool, matching: MatchBy) -> D
         let changes: Vec<FieldChange> = keys
             .into_iter()
             .filter(|f| geometry || !matches!(f.as_str(), "position" | "rotation" | "side"))
-            .filter(|f| same_source || !(matches!(f.as_str(), "kind" | "exclude_from_bom")
-                || x.pcb_fields.contains_key(f.as_str()) || y.pcb_fields.contains_key(f.as_str())))
-            .inspect(|f| { compared.insert(if f.starts_with("param:") { "parameters".to_owned() } else { f.to_string() }); })
+            .filter(|f| {
+                same_source
+                    || !(matches!(f.as_str(), "kind" | "exclude_from_bom")
+                        || x.pcb_fields.contains_key(f.as_str())
+                        || y.pcb_fields.contains_key(f.as_str()))
+            })
+            .inspect(|f| {
+                compared.insert(if f.starts_with("param:") {
+                    "parameters".to_owned()
+                } else {
+                    f.to_string()
+                });
+            })
             .filter_map(|f| {
                 let (bv, av) = (fx.get(f), fy.get(f));
                 (bv != av).then(|| FieldChange {
                     field: f.clone(),
                     before: bv.cloned().unwrap_or_default(),
                     after: av.cloned().unwrap_or_default(),
-                    side: if bv.is_none() { Some("only_in_b") } else if av.is_none() { Some("only_in_a") } else { None },
+                    side: if bv.is_none() {
+                        Some("only_in_b")
+                    } else if av.is_none() {
+                        Some("only_in_a")
+                    } else {
+                        None
+                    },
                 })
             })
             .collect();
         if !changes.is_empty() {
-            parts_changed.push(PartChange { designator: k.clone(), changes });
+            parts_changed.push(PartChange {
+                designator: k.clone(),
+                changes,
+            });
         }
     }
     parts_changed.sort_by(|a, b| designator::cmp(&a.designator, &b.designator));
@@ -166,22 +214,50 @@ pub fn diff_with(a: &Design, b: &Design, geometry: bool, matching: MatchBy) -> D
     let nodes = |d: &Design, before: bool| -> BTreeMap<String, BTreeSet<String>> {
         d.nets
             .iter()
-            .map(|n| (n.name.clone(), n.nodes.iter().map(|x| {
-                let name = if before { pairs.get(&x.designator).unwrap_or(&x.designator) } else { &x.designator };
-                format!("{name}.{}", x.pin)
-            }).collect()))
+            .map(|n| {
+                (
+                    n.name.clone(),
+                    n.nodes
+                        .iter()
+                        .map(|x| {
+                            let name = if before {
+                                pairs.get(&x.designator).unwrap_or(&x.designator)
+                            } else {
+                                &x.designator
+                            };
+                            format!("{name}.{}", x.pin)
+                        })
+                        .collect(),
+                )
+            })
             .collect()
     };
     let (na, nb) = (nodes(a, true), nodes(b, false));
-    let mut nets_added = sorted(nb.keys().filter(|k| !na.contains_key(*k)).cloned().collect());
-    let mut nets_removed = sorted(na.keys().filter(|k| !nb.contains_key(*k)).cloned().collect());
+    let mut nets_added = sorted(
+        nb.keys()
+            .filter(|k| !na.contains_key(*k))
+            .cloned()
+            .collect(),
+    );
+    let mut nets_removed = sorted(
+        na.keys()
+            .filter(|k| !nb.contains_key(*k))
+            .cloned()
+            .collect(),
+    );
     // A removed and an added net with the same (non-empty) node set is a rename.
     let mut nets_renamed = vec![];
     nets_removed.retain(|old| {
         let set = &na[old];
-        match nets_added.iter().position(|new| !set.is_empty() && &nb[new] == set) {
+        match nets_added
+            .iter()
+            .position(|new| !set.is_empty() && &nb[new] == set)
+        {
             Some(i) => {
-                nets_renamed.push(NetRename { before: old.clone(), after: nets_added.remove(i) });
+                nets_renamed.push(NetRename {
+                    before: old.clone(),
+                    after: nets_added.remove(i),
+                });
                 false
             }
             None => true,
@@ -193,7 +269,11 @@ pub fn diff_with(a: &Design, b: &Design, geometry: bool, matching: MatchBy) -> D
         let added = sorted(y.difference(x).cloned().collect());
         let removed = sorted(x.difference(y).cloned().collect());
         if !added.is_empty() || !removed.is_empty() {
-            nets_changed.push(NetChange { net: k.clone(), added_nodes: added, removed_nodes: removed });
+            nets_changed.push(NetChange {
+                net: k.clone(),
+                added_nodes: added,
+                removed_nodes: removed,
+            });
         }
     }
     let identical = parts_added.is_empty()
@@ -204,7 +284,18 @@ pub fn diff_with(a: &Design, b: &Design, geometry: bool, matching: MatchBy) -> D
         && nets_removed.is_empty()
         && nets_renamed.is_empty()
         && nets_changed.is_empty();
-    Diff { parts_added, parts_removed, parts_changed, parts_renamed, nets_added, nets_removed, nets_renamed, nets_changed, identical, part_fields: compared }
+    Diff {
+        parts_added,
+        parts_removed,
+        parts_changed,
+        parts_renamed,
+        nets_added,
+        nets_removed,
+        nets_renamed,
+        nets_changed,
+        identical,
+        part_fields: compared,
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -233,10 +324,21 @@ pub struct RuleDiff {
 fn rule_fields(r: &Rule) -> BTreeMap<String, serde_json::Value> {
     use serde_json::json;
     let mut m = BTreeMap::new();
-    for (key, value) in [("kind", json!(r.kind)), ("comment", json!(r.comment)), ("net_scope", json!(r.net_scope)),
-        ("layer_kind", json!(r.layer_kind)), ("enabled", json!(r.enabled)), ("priority", json!(r.priority)),
-        ("scope1", json!(r.scope1)), ("scope2", json!(r.scope2))] { m.insert(key.into(), value); }
-    for (k, v) in &r.values { m.insert(k.clone(), json!(v)); }
+    for (key, value) in [
+        ("kind", json!(r.kind)),
+        ("comment", json!(r.comment)),
+        ("net_scope", json!(r.net_scope)),
+        ("layer_kind", json!(r.layer_kind)),
+        ("enabled", json!(r.enabled)),
+        ("priority", json!(r.priority)),
+        ("scope1", json!(r.scope1)),
+        ("scope2", json!(r.scope2)),
+    ] {
+        m.insert(key.into(), value);
+    }
+    for (k, v) in &r.values {
+        m.insert(k.clone(), json!(v));
+    }
     m
 }
 
@@ -245,8 +347,16 @@ pub fn rules(a: &[Rule], b: &[Rule]) -> RuleDiff {
     let ra: BTreeMap<&str, &Rule> = a.iter().map(|r| (r.name.as_str(), r)).collect();
     let rb: BTreeMap<&str, &Rule> = b.iter().map(|r| (r.name.as_str(), r)).collect();
     let mut d = RuleDiff {
-        added: rb.keys().filter(|k| !ra.contains_key(*k)).map(|k| k.to_string()).collect(),
-        removed: ra.keys().filter(|k| !rb.contains_key(*k)).map(|k| k.to_string()).collect(),
+        added: rb
+            .keys()
+            .filter(|k| !ra.contains_key(*k))
+            .map(|k| k.to_string())
+            .collect(),
+        removed: ra
+            .keys()
+            .filter(|k| !rb.contains_key(*k))
+            .map(|k| k.to_string())
+            .collect(),
         changed: vec![],
     };
     for (name, x) in &ra {
@@ -256,14 +366,27 @@ pub fn rules(a: &[Rule], b: &[Rule]) -> RuleDiff {
         let changes: Vec<RuleFieldChange> = keys
             .into_iter()
             .filter_map(|f| {
-                let (bv, av) = (fx.get(f).cloned().unwrap_or_default(), fy.get(f).cloned().unwrap_or_default());
-                (bv != av).then(|| RuleFieldChange { field: f.clone(), before: bv, after: av,
-                    unit: x.values.get(f).or_else(|| y.values.get(f)).and_then(|v| matches!(v, altium_doc::pcb::records::Value::Len(_))
-                        .then(|| altium_core::units::output_unit().name())) })
+                let (bv, av) = (
+                    fx.get(f).cloned().unwrap_or_default(),
+                    fy.get(f).cloned().unwrap_or_default(),
+                );
+                (bv != av).then(|| RuleFieldChange {
+                    field: f.clone(),
+                    before: bv,
+                    after: av,
+                    unit: x.values.get(f).or_else(|| y.values.get(f)).and_then(|v| {
+                        matches!(v, altium_doc::pcb::records::Value::Len(_))
+                            .then(|| altium_core::units::output_unit().name())
+                    }),
+                })
             })
             .collect();
         if !changes.is_empty() {
-            d.changed.push(RuleChange { rule: name.to_string(), kind: y.kind.clone(), changes });
+            d.changed.push(RuleChange {
+                rule: name.to_string(),
+                kind: y.kind.clone(),
+                changes,
+            });
         }
     }
     d
@@ -272,8 +395,16 @@ pub fn rules(a: &[Rule], b: &[Rule]) -> RuleDiff {
 /// PCB classes matched by kind and name: added, removed, and member changes.
 pub fn classes(a: &[Class], b: &[Class]) -> Vec<serde_json::Value> {
     use serde_json::json;
-    let keyed = |cs: &[Class]| cs.iter().map(|c| ((c.kind.clone(), c.name.clone()), c.members.iter().cloned().collect::<BTreeSet<_>>()))
-        .collect::<BTreeMap<_, _>>();
+    let keyed = |cs: &[Class]| {
+        cs.iter()
+            .map(|c| {
+                (
+                    (c.kind.clone(), c.name.clone()),
+                    c.members.iter().cloned().collect::<BTreeSet<_>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
     let (ca, cb) = (keyed(a), keyed(b));
     let mut rows = vec![];
     for key @ (kind, name) in ca.keys().chain(cb.keys()).collect::<BTreeSet<_>>() {
@@ -290,30 +421,54 @@ pub fn classes(a: &[Class], b: &[Class]) -> Vec<serde_json::Value> {
 
 /// Schematic document parameters keyed by (sheet, name). `single` names the sheet keyed `""`
 /// (a lone sheet, so two copies with different file names still match).
-pub fn sheet_params(a: &BTreeMap<(String, String), String>, b: &BTreeMap<(String, String), String>, single: &str) -> Vec<serde_json::Value> {
+pub fn sheet_params(
+    a: &BTreeMap<(String, String), String>,
+    b: &BTreeMap<(String, String), String>,
+    single: &str,
+) -> Vec<serde_json::Value> {
     use serde_json::json;
     let mut rows = vec![];
     for key @ (sheet, name) in a.keys().chain(b.keys()).collect::<BTreeSet<_>>() {
         let (bv, av) = (a.get(key), b.get(key));
-        if bv == av { continue; }
+        if bv == av {
+            continue;
+        }
         let mut row = json!({"change":"sheet_param_changed","ref": if sheet.is_empty() { single } else { sheet },"field":name,
             "before":bv.cloned().unwrap_or_default(),"after":av.cloned().unwrap_or_default()});
-        if bv.is_none() { row["side"] = json!("only_in_b"); } else if av.is_none() { row["side"] = json!("only_in_a"); }
+        if bv.is_none() {
+            row["side"] = json!("only_in_b");
+        } else if av.is_none() {
+            row["side"] = json!("only_in_a");
+        }
         rows.push(row);
     }
     rows
 }
 
 /// Project-level changes, independent of the chosen schematic/PCB comparison source.
-pub fn project(a: &altium_doc::project::Project, b: &altium_doc::project::Project) -> Vec<serde_json::Value> {
+pub fn project(
+    a: &altium_doc::project::Project,
+    b: &altium_doc::project::Project,
+) -> Vec<serde_json::Value> {
     use serde_json::json;
-    let variants = |p: &altium_doc::project::Project| p.variants().into_iter().map(|v| (v.name.clone(), v)).collect::<BTreeMap<_, _>>();
+    let variants = |p: &altium_doc::project::Project| {
+        p.variants()
+            .into_iter()
+            .map(|v| (v.name.clone(), v))
+            .collect::<BTreeMap<_, _>>()
+    };
     let (av, bv) = (variants(a), variants(b));
     let variations = |v: &altium_doc::project::Variant| {
         let mut result = BTreeMap::new();
-        for r in &v.variations { result.insert(r.designator.clone(), json!(r)); }
+        for r in &v.variations {
+            result.insert(r.designator.clone(), json!(r));
+        }
         for r in &v.param_variations {
-            let name = r.iter().find(|(k, _)| k.eq_ignore_ascii_case("Designator")).map(|(_, v)| v.clone()).unwrap_or_default();
+            let name = r
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("Designator"))
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default();
             result.insert(format!("{name}:parameters"), json!(r));
         }
         result
@@ -327,12 +482,16 @@ pub fn project(a: &altium_doc::project::Project, b: &altium_doc::project::Projec
                     changes.push(json!({"change":"variation_changed","ref":key.split(':').next().unwrap_or(&key),
                         "variant":name,"before":null,"after":value}));
                 }
-            },
-            (Some(v), None) => changes.push(json!({"change":"variant_removed", "ref": name, "before": v})),
+            }
+            (Some(v), None) => {
+                changes.push(json!({"change":"variant_removed", "ref": name, "before": v}))
+            }
             (Some(x), Some(y)) => {
                 let (ax, by) = (variations(x), variations(y));
                 for key in ax.keys().chain(by.keys()).collect::<BTreeSet<_>>() {
-                    if ax.get(key) != by.get(key) { changes.push(json!({"change":"variation_changed", "ref": key.split(':').next().unwrap_or(key), "variant":name, "before":ax.get(key), "after":by.get(key)})); }
+                    if ax.get(key) != by.get(key) {
+                        changes.push(json!({"change":"variation_changed", "ref": key.split(':').next().unwrap_or(key), "variant":name, "before":ax.get(key), "after":by.get(key)}));
+                    }
                 }
                 if x.parameters != y.parameters || x.allow_fabrication != y.allow_fabrication {
                     changes.push(json!({"change":"variant_changed", "ref": name,
@@ -346,35 +505,64 @@ pub fn project(a: &altium_doc::project::Project, b: &altium_doc::project::Projec
     let fields = |p: &altium_doc::project::Project| {
         let mut fields = BTreeMap::new();
         for section in &p.ini.sections {
-            if section.name.starts_with("ProjectVariant") || section.name.starts_with("GeneratedDocument") { continue; }
-            for e in &section.entries { fields.insert(format!("{}.{}", section.name, e.key), e.value.clone()); }
+            if section.name.starts_with("ProjectVariant")
+                || section.name.starts_with("GeneratedDocument")
+            {
+                continue;
+            }
+            for e in &section.entries {
+                fields.insert(format!("{}.{}", section.name, e.key), e.value.clone());
+            }
         }
         fields
     };
     let (ax, by) = (fields(a), fields(b));
     for key in ax.keys().chain(by.keys()).collect::<BTreeSet<_>>() {
-        if ax.get(key) != by.get(key) { changes.push(json!({"change":"project_setting_changed", "ref":key, "before":ax.get(key), "after":by.get(key)})); }
+        if ax.get(key) != by.get(key) {
+            changes.push(json!({"change":"project_setting_changed", "ref":key, "before":ax.get(key), "after":by.get(key)}));
+        }
     }
     changes
 }
 
 /// Compare decoded library objects by name. Unknown binary streams are outside this scope.
-pub fn library(a: &[serde_json::Value], b: &[serde_json::Value], kind: &str) -> Vec<serde_json::Value> {
+pub fn library(
+    a: &[serde_json::Value],
+    b: &[serde_json::Value],
+    kind: &str,
+) -> Vec<serde_json::Value> {
     use serde_json::{Value, json};
-    let named = |objects: &[Value]| objects.iter().filter_map(|v| v["name"].as_str().map(|n| (n.to_owned(), v.clone()))).collect::<BTreeMap<_, _>>();
+    let named = |objects: &[Value]| {
+        objects
+            .iter()
+            .filter_map(|v| v["name"].as_str().map(|n| (n.to_owned(), v.clone())))
+            .collect::<BTreeMap<_, _>>()
+    };
     let (a, b) = (named(a), named(b));
     let mut items = vec![];
     for name in a.keys().chain(b.keys()).collect::<BTreeSet<_>>() {
         match (a.get(name), b.get(name)) {
-            (None, Some(v)) => items.push(json!({"change":format!("{kind}_added"),"ref":name,"after":v})),
-            (Some(v), None) => items.push(json!({"change":format!("{kind}_removed"),"ref":name,"before":v})),
+            (None, Some(v)) => {
+                items.push(json!({"change":format!("{kind}_added"),"ref":name,"after":v}))
+            }
+            (Some(v), None) => {
+                items.push(json!({"change":format!("{kind}_removed"),"ref":name,"before":v}))
+            }
             (Some(x), Some(y)) => {
-                let (Some(x), Some(y)) = (x.as_object(), y.as_object()) else { continue };
+                let (Some(x), Some(y)) = (x.as_object(), y.as_object()) else {
+                    continue;
+                };
                 for field in x.keys().chain(y.keys()).collect::<BTreeSet<_>>() {
-                    if ["index", "storage", "streams", "warnings", "raw"].contains(&field.as_str()) || x.get(field) == y.get(field) { continue; }
+                    if ["index", "storage", "streams", "warnings", "raw"].contains(&field.as_str())
+                        || x.get(field) == y.get(field)
+                    {
+                        continue;
+                    }
                     let change = match field.as_str() {
-                        "pads" => "pads_changed", "models" | "bodies" => "model_changed",
-                        "height" | "parameters" | "description" => "param_changed", _ => "library_field_changed",
+                        "pads" => "pads_changed",
+                        "models" | "bodies" => "model_changed",
+                        "height" | "parameters" | "description" => "param_changed",
+                        _ => "library_field_changed",
                     };
                     items.push(json!({"change":change,"ref":name,"field":field,"before":x.get(field),"after":y.get(field)}));
                 }
@@ -395,13 +583,25 @@ mod tests {
         use altium_doc::project::Project;
         use std::path::Path;
 
-        let before = Project::from_bytes(Path::new("before.PrjPcb"), b"[Design]\nName=Before\n").unwrap();
-        let after = Project::from_bytes(Path::new("after.PrjPcb"), b"[Design]\nName=After\n\
+        let before =
+            Project::from_bytes(Path::new("before.PrjPcb"), b"[Design]\nName=Before\n").unwrap();
+        let after = Project::from_bytes(
+            Path::new("after.PrjPcb"),
+            b"[Design]\nName=After\n\
             [ProjectVariant1]\nDescription=Lite\nUniqueID=ABCDEF\nAllowFabrication=1\n\
-            [GeneratedDocument1]\nDocumentPath=generated.OutJob\n").unwrap();
+            [GeneratedDocument1]\nDocumentPath=generated.OutJob\n",
+        )
+        .unwrap();
         let changes = project(&before, &after);
-        assert!(changes.iter().any(|r| r["change"] == "variant_added" && r["ref"] == "Lite"));
-        let settings: Vec<_> = changes.iter().filter(|r| r["change"] == "project_setting_changed").collect();
+        assert!(
+            changes
+                .iter()
+                .any(|r| r["change"] == "variant_added" && r["ref"] == "Lite")
+        );
+        let settings: Vec<_> = changes
+            .iter()
+            .filter(|r| r["change"] == "project_setting_changed")
+            .collect();
         assert_eq!(settings.len(), 1, "{changes:?}");
         assert_eq!(settings[0]["ref"], "Design.Name");
         assert_eq!(settings[0]["before"], "Before");
@@ -413,7 +613,12 @@ mod tests {
         use altium_doc::pcb::records::rule;
         use altium_format::props::Props;
 
-        let before = rule(0, 0, Props::parse(b"|NAME=Clearance|RULEKIND=Clearance"), false);
+        let before = rule(
+            0,
+            0,
+            Props::parse(b"|NAME=Clearance|RULEKIND=Clearance"),
+            false,
+        );
         for (key, field, value) in [
             ("COMMENT", "comment", "QA comment"),
             ("NETSCOPE", "net_scope", "DifferentNetsOnly"),
@@ -429,19 +634,42 @@ mod tests {
             assert_eq!(d.changed[0].changes[0].field, field);
             assert_eq!(d.changed[0].changes[0].after, value);
         }
-        assert!(rules(std::slice::from_ref(&before), std::slice::from_ref(&before)).changed.is_empty());
+        assert!(
+            rules(std::slice::from_ref(&before), std::slice::from_ref(&before))
+                .changed
+                .is_empty()
+        );
     }
 
     #[test]
     fn parts_and_nets() {
-        let p = |d: &str, c: &str| Part { designator: d.into(), comment: c.into(), ..Default::default() };
-        let n = |name: &str, nodes: &[&str]| Net {
-            name: name.into(),
-            nodes: nodes.iter().map(|x| Node { designator: x.to_string(), pin: "1".into(), pin_name: String::new() }).collect(),
+        let p = |d: &str, c: &str| Part {
+            designator: d.into(),
+            comment: c.into(),
             ..Default::default()
         };
-        let a = Design { parts: vec![p("R1", "10k"), p("R2", "1k")], nets: vec![n("GND", &["R1"])], ..Default::default() };
-        let b = Design { parts: vec![p("R1", "22k"), p("C1", "1u")], nets: vec![n("GND", &["R1", "C1"])], ..Default::default() };
+        let n = |name: &str, nodes: &[&str]| Net {
+            name: name.into(),
+            nodes: nodes
+                .iter()
+                .map(|x| Node {
+                    designator: x.to_string(),
+                    pin: "1".into(),
+                    pin_name: String::new(),
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let a = Design {
+            parts: vec![p("R1", "10k"), p("R2", "1k")],
+            nets: vec![n("GND", &["R1"])],
+            ..Default::default()
+        };
+        let b = Design {
+            parts: vec![p("R1", "22k"), p("C1", "1u")],
+            nets: vec![n("GND", &["R1", "C1"])],
+            ..Default::default()
+        };
         let d = diff(&a, &b, false);
         assert_eq!(d.parts_added, ["C1"]);
         assert_eq!(d.parts_removed, ["R2"]);

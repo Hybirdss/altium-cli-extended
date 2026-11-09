@@ -23,10 +23,20 @@ pub struct Check {
 
 impl Check {
     fn pass(name: &'static str, detail: impl Into<String>) -> Check {
-        Check { name, ok: true, detail: detail.into(), hint: None }
+        Check {
+            name,
+            ok: true,
+            detail: detail.into(),
+            hint: None,
+        }
     }
     fn fail(name: &'static str, detail: impl Into<String>, hint: impl Into<String>) -> Check {
-        Check { name, ok: false, detail: detail.into(), hint: Some(hint.into()) }
+        Check {
+            name,
+            ok: false,
+            detail: detail.into(),
+            hint: Some(hint.into()),
+        }
     }
 }
 
@@ -80,7 +90,10 @@ pub struct Discovery {
 }
 
 pub fn bottles_data() -> PathBuf {
-    home().join(".var/app").join(BOTTLES_APP).join("data/bottles")
+    home()
+        .join(".var/app")
+        .join(BOTTLES_APP)
+        .join("data/bottles")
 }
 
 fn which(bin: &str) -> Option<PathBuf> {
@@ -107,7 +120,10 @@ fn altium_dirs(prefix: &Path) -> Vec<String> {
 
 fn natural_key(s: &str) -> (String, u64) {
     let digits: String = s.chars().filter(|c| c.is_ascii_digit()).collect();
-    (s.chars().filter(|c| !c.is_ascii_digit()).collect(), digits.parse().unwrap_or(0))
+    (
+        s.chars().filter(|c| !c.is_ascii_digit()).collect(),
+        digits.parse().unwrap_or(0),
+    )
 }
 
 /// Case-insensitive file lookup in one directory.
@@ -116,7 +132,10 @@ pub fn find_ci(dir: &Path, name: &str) -> Option<PathBuf> {
         .ok()?
         .flatten()
         .map(|e| e.path())
-        .find(|p| p.file_name().is_some_and(|f| f.to_string_lossy().eq_ignore_ascii_case(name)))
+        .find(|p| {
+            p.file_name()
+                .is_some_and(|f| f.to_string_lossy().eq_ignore_ascii_case(name))
+        })
 }
 
 /// Minimal reader for the parts of Bottles' bottle.yml we need.
@@ -145,11 +164,12 @@ pub fn read_bottle_yml(path: &Path) -> Option<BottleYml> {
         }
         if in_env {
             if let Some(kv) = line.strip_prefix("  ")
-                && let Some((k, v)) = kv.trim_start().split_once(": ") {
-                    let v = v.trim().trim_matches('\'').trim_matches('"');
-                    env.insert(k.trim().to_owned(), v.to_owned());
-                    continue;
-                }
+                && let Some((k, v)) = kv.trim_start().split_once(": ")
+            {
+                let v = v.trim().trim_matches('\'').trim_matches('"');
+                env.insert(k.trim().to_owned(), v.to_owned());
+                continue;
+            }
             in_env = false;
         }
     }
@@ -166,16 +186,35 @@ pub fn discover(cfg: &Config) -> Discovery {
         match &wine {
             Some(w) => checks.push(Check::pass("wine", w.display().to_string())),
             None => {
-                checks.push(Check::fail("wine", "wine not on PATH", "install wine or set \"wine\" in the config"));
-                return Discovery { checks, installation: None };
+                checks.push(Check::fail(
+                    "wine",
+                    "wine not on PATH",
+                    "install wine or set \"wine\" in the config",
+                ));
+                return Discovery {
+                    checks,
+                    installation: None,
+                };
             }
         }
         if !prefix.join("drive_c").is_dir() {
-            checks.push(Check::fail("prefix", format!("{} is not a Wine prefix", prefix.display()), "set \"prefix\" in the config"));
-            return Discovery { checks, installation: None };
+            checks.push(Check::fail(
+                "prefix",
+                format!("{} is not a Wine prefix", prefix.display()),
+                "set \"prefix\" in the config",
+            ));
+            return Discovery {
+                checks,
+                installation: None,
+            };
         }
         checks.push(Check::pass("prefix", prefix.display().to_string()));
-        (Runtime::Wine { wine: wine.unwrap() }, prefix)
+        (
+            Runtime::Wine {
+                wine: wine.unwrap(),
+            },
+            prefix,
+        )
     } else {
         match which("flatpak") {
             Some(p) => checks.push(Check::pass("flatpak", p.display().to_string())),
@@ -185,7 +224,10 @@ pub fn discover(cfg: &Config) -> Discovery {
                     "flatpak is not installed",
                     "run `! sudo pacman -S flatpak` (Arch) then `ace designer setup`",
                 ));
-                return Discovery { checks, installation: None };
+                return Discovery {
+                    checks,
+                    installation: None,
+                };
             }
         }
         let data = bottles_data();
@@ -195,7 +237,10 @@ pub fn discover(cfg: &Config) -> Discovery {
                 format!("no Bottles data at {}", data.display()),
                 format!("run `flatpak install --user -y flathub {BOTTLES_APP}` then create a bottle (see `ace designer setup`)"),
             ));
-            return Discovery { checks, installation: None };
+            return Discovery {
+                checks,
+                installation: None,
+            };
         }
         checks.push(Check::pass("bottles", data.display().to_string()));
 
@@ -211,7 +256,11 @@ pub fn discover(cfg: &Config) -> Discovery {
             None => bottles
                 .iter()
                 .find(|b| b.eq_ignore_ascii_case("Altium"))
-                .or_else(|| bottles.iter().find(|b| !altium_dirs(&data.join("bottles").join(b)).is_empty()))
+                .or_else(|| {
+                    bottles
+                        .iter()
+                        .find(|b| !altium_dirs(&data.join("bottles").join(b)).is_empty())
+                })
                 .cloned(),
         };
         let Some(bottle) = chosen else {
@@ -220,26 +269,52 @@ pub fn discover(cfg: &Config) -> Discovery {
                 format!("no bottle with Altium (bottles: {bottles:?})"),
                 "create a bottle named Altium (Gaming environment, soda runner) and install Altium into it; see `ace designer setup`",
             ));
-            return Discovery { checks, installation: None };
+            return Discovery {
+                checks,
+                installation: None,
+            };
         };
         let bdir = data.join("bottles").join(&bottle);
         let Some(yml) = read_bottle_yml(&bdir.join("bottle.yml")) else {
-            checks.push(Check::fail("bottle", format!("cannot read {}/bottle.yml", bdir.display()), "recreate the bottle"));
-            return Discovery { checks, installation: None };
+            checks.push(Check::fail(
+                "bottle",
+                format!("cannot read {}/bottle.yml", bdir.display()),
+                "recreate the bottle",
+            ));
+            return Discovery {
+                checks,
+                installation: None,
+            };
         };
-        checks.push(Check::pass("bottle", format!("{bottle} ({})", bdir.display())));
+        checks.push(Check::pass(
+            "bottle",
+            format!("{bottle} ({})", bdir.display()),
+        ));
         let runner_dir = data.join("runners").join(&yml.runner);
         if !runner_dir.join("bin/wine").is_file() {
             checks.push(Check::fail(
                 "runner",
-                format!("runner {:?} not found in {}", yml.runner, data.join("runners").display()),
+                format!(
+                    "runner {:?} not found in {}",
+                    yml.runner,
+                    data.join("runners").display()
+                ),
                 "install the soda runner in Bottles (Preferences > Runners)",
             ));
-            return Discovery { checks, installation: None };
+            return Discovery {
+                checks,
+                installation: None,
+            };
         }
         checks.push(Check::pass("runner", yml.runner.clone()));
         (
-            Runtime::Bottles { bottle, runner: yml.runner, runner_dir, env: yml.env, sync: yml.sync },
+            Runtime::Bottles {
+                bottle,
+                runner: yml.runner,
+                runner_dir,
+                env: yml.env,
+                sync: yml.sync,
+            },
             bdir,
         )
     };
@@ -255,14 +330,19 @@ pub fn discover(cfg: &Config) -> Discovery {
             format!("no X2.EXE under {}/drive_c/Program Files/Altium", prefix.display()),
             "install Altium Designer into the bottle with the offline installer; see `ace designer setup`",
         ));
-        return Discovery { checks, installation: None };
+        return Discovery {
+            checks,
+            installation: None,
+        };
     };
     let altium_dir = prefix.join("drive_c/Program Files/Altium").join(&name);
     let x2 = find_ci(&altium_dir, "X2.EXE").expect("checked by altium_dirs");
     checks.push(Check::pass("altium", format!("{name} ({})", x2.display())));
 
     if matches!(runtime, Runtime::Bottles { .. }) {
-        let fixes = ["SHFolder.dll", "dxvk.conf"].iter().all(|f| find_ci(&altium_dir, f).is_some());
+        let fixes = ["SHFolder.dll", "dxvk.conf"]
+            .iter()
+            .all(|f| find_ci(&altium_dir, f).is_some());
         checks.push(if fixes {
             Check::pass("wine-fixes", "altium-on-linux fixes present (SHFolder.dll proxy, dxvk.conf)")
         } else {
@@ -274,6 +354,15 @@ pub fn discover(cfg: &Config) -> Discovery {
         });
     }
 
-    let installation = Installation { runtime, prefix, altium_name: name, altium_dir, x2 };
-    Discovery { checks, installation: Some(installation) }
+    let installation = Installation {
+        runtime,
+        prefix,
+        altium_name: name,
+        altium_dir,
+        x2,
+    };
+    Discovery {
+        checks,
+        installation: Some(installation),
+    }
 }

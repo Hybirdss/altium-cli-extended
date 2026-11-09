@@ -72,7 +72,10 @@ pub fn type_number(name: &str) -> Option<i64> {
 
 /// Every known record type as `(number, name)`, for hints.
 pub fn known_types() -> Vec<(i64, &'static str)> {
-    (0..=300).filter(|&n| type_name(n) != "unknown").map(|n| (n, type_name(n))).collect()
+    (0..=300)
+        .filter(|&n| type_name(n) != "unknown")
+        .map(|n| (n, type_name(n)))
+        .collect()
 }
 
 /// `TRotateBy90` orientation (0..3) → degrees.
@@ -256,11 +259,15 @@ pub fn corner(p: &Props) -> Point {
 /// the regular ones) used by long polygons.
 pub fn points(p: &Props) -> Vec<Point> {
     let n = p.int_or("LOCATIONCOUNT", 0).max(0);
-    let mut v: Vec<Point> =
-        (1..=n).map(|i| Point::new(p.sch(&format!("X{i}")), p.sch(&format!("Y{i}")))).collect();
+    let mut v: Vec<Point> = (1..=n)
+        .map(|i| Point::new(p.sch(&format!("X{i}")), p.sch(&format!("Y{i}"))))
+        .collect();
     let extra = p.int_or("EXTRALOCATIONCOUNT", 0).max(0);
     for i in n + 1..=n + extra {
-        v.push(Point::new(p.sch(&format!("EX{i}")), p.sch(&format!("EY{i}"))));
+        v.push(Point::new(
+            p.sch(&format!("EX{i}")),
+            p.sch(&format!("EY{i}")),
+        ));
     }
     v
 }
@@ -268,7 +275,10 @@ pub fn points(p: &Props) -> Vec<Point> {
 /// `DISTANCEFROMTOP` of sheet / harness entries: integer part in units of 100 mil (ten
 /// schematic units) plus `DISTANCEFROMTOP_FRAC1` in 1/100000 of 10 mil.
 pub fn distance_from_top(p: &Props) -> Coord {
-    Coord::from_sch(p.int_or("DISTANCEFROMTOP", 0) * 10, p.int_or("DISTANCEFROMTOP_FRAC1", 0))
+    Coord::from_sch(
+        p.int_or("DISTANCEFROMTOP", 0) * 10,
+        p.int_or("DISTANCEFROMTOP_FRAC1", 0),
+    )
 }
 
 /// Text frame / note text: `~1` encodes a line break.
